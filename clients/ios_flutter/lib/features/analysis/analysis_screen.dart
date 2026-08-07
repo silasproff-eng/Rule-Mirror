@@ -78,13 +78,23 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
   Widget build(BuildContext context) {
     final wide = MediaQuery.sizeOf(context).width >= 900;
     if (stage == FlowStage.starting)
-      return const Scaffold(
-          body: ColoredBox(
-              color: Color(0xfff7f7f4),
-              child: _ProgressPanel(
-                  title: 'Connecting to RuleMirror',
-                  detail: 'Checking the secure analysis service.',
-                  progress: 0.12)));
+      return Scaffold(
+          body: DecoratedBox(
+              decoration: const BoxDecoration(
+                  gradient: LinearGradient(
+                      colors: [Color(0xffedf4ef), Color(0xffcfe2d8)],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight)),
+              child: Center(
+                  child: TweenAnimationBuilder<double>(
+                      tween: Tween(begin: 0.86, end: 1),
+                      duration: const Duration(milliseconds: 650),
+                      builder: (context, value, child) =>
+                          Opacity(opacity: value, child: child),
+                      child: const _ProgressPanel(
+                          title: 'Connecting to RuleMirror',
+                          detail: 'Preparing your private workspace.',
+                          progress: 0.12)))));
     return Scaffold(
       body: SafeArea(
         child: Row(

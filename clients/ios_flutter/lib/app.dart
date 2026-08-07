@@ -77,6 +77,7 @@ class _LaunchShellState extends State<_LaunchShell>
     ..forward();
   int tab = 2;
   bool ready = false;
+  late final PageController pages = PageController(initialPage: tab);
 
   @override
   void initState() {
@@ -89,6 +90,7 @@ class _LaunchShellState extends State<_LaunchShell>
   @override
   void dispose() {
     animation.dispose();
+    pages.dispose();
     super.dispose();
   }
 
@@ -100,26 +102,31 @@ class _LaunchShellState extends State<_LaunchShell>
     return Scaffold(
       body: FadeTransition(
           opacity: CurvedAnimation(parent: animation, curve: Curves.easeOut),
-          child: IndexedStack(index: tab, children: [
-            const _HomeTab(),
-            const _InfoTab(
-                title: 'My portfolio',
-                detail:
-                    'Your holdings and portfolio value will appear here after a holdings import.'),
-            AnalysisScreen(onThemeChanged: widget.onThemeChanged),
-            const _InfoTab(
-                title: 'Trades',
-                detail:
-                    'Your reconstructed trade history will appear here after you import an execution export.'),
-            _InfoTab(
-                title: 'Profile & settings',
-                detail:
-                    'Manage your workspace, privacy, appearance, and public profile.',
-                onThemeChanged: widget.onThemeChanged),
-          ])),
+          child: PageView(
+              controller: pages,
+              onPageChanged: (value) => setState(() => tab = value),
+              children: [
+                const _HomeTab(),
+                const _InfoTab(
+                    title: 'My portfolio',
+                    detail:
+                        'Your holdings and portfolio value will appear here after a holdings import.'),
+                AnalysisScreen(onThemeChanged: widget.onThemeChanged),
+                const _InfoTab(
+                    title: 'Trades',
+                    detail:
+                        'Your reconstructed trade history will appear here after you import an execution export.'),
+                _InfoTab(
+                    title: 'Profile & settings',
+                    detail:
+                        'Manage your workspace, privacy, appearance, and public profile.',
+                    onThemeChanged: widget.onThemeChanged),
+              ])),
       bottomNavigationBar: NavigationBar(
           selectedIndex: tab,
-          onDestinationSelected: (value) => setState(() => tab = value),
+          onDestinationSelected: (value) => pages.animateToPage(value,
+              duration: const Duration(milliseconds: 260),
+              curve: Curves.easeOutCubic),
           destinations: const [
             NavigationDestination(
                 icon: Icon(Icons.grid_view_outlined),
@@ -151,9 +158,10 @@ class _SplashScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = Theme.of(context).colorScheme;
+    const forest = Color(0xff102d24);
+    const moss = Color(0xff8eb9a0);
     return ColoredBox(
-        color: colors.surface,
+        color: forest,
         child: Center(
             child:
                 Column(mainAxisAlignment: MainAxisAlignment.center, children: [
@@ -161,10 +169,8 @@ class _SplashScreen extends StatelessWidget {
               width: 62,
               height: 62,
               decoration: BoxDecoration(
-                  color: colors.primary,
-                  borderRadius: BorderRadius.circular(18)),
-              child: Icon(Icons.analytics_outlined,
-                  color: colors.onPrimary, size: 32)),
+                  color: moss, borderRadius: BorderRadius.circular(18)),
+              child: Icon(Icons.analytics_outlined, color: forest, size: 32)),
           const SizedBox(height: 22),
           Text('RuleMirror',
               style: Theme.of(context)
@@ -173,13 +179,12 @@ class _SplashScreen extends StatelessWidget {
                   ?.copyWith(fontWeight: FontWeight.w700)),
           const SizedBox(height: 8),
           Text('A clearer record of your decisions',
-              style: TextStyle(color: colors.onSurfaceVariant)),
+              style: TextStyle(color: moss)),
           const SizedBox(height: 28),
           SizedBox(
               width: 22,
               height: 22,
-              child: CircularProgressIndicator(
-                  strokeWidth: 2, color: colors.primary))
+              child: CircularProgressIndicator(strokeWidth: 2, color: moss))
         ])));
   }
 }
