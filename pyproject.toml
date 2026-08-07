@@ -1,0 +1,45 @@
+[build-system]
+requires = ["setuptools>=75"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "strategy-audit-app"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+  "fastapi==0.116.1",
+  "uvicorn==0.35.0",
+  "pydantic-settings==2.10.1",
+  "sqlalchemy==2.0.43",
+  "alembic==1.16.4",
+  "python-multipart==0.0.20",
+  "argon2-cffi==25.1.0",
+  "PyJWT==2.10.1",
+  "httpx==0.28.1"
+  ,"email-validator==2.2.0"
+]
+
+[project.optional-dependencies]
+dev = ["pytest==8.4.1", "pytest-asyncio==1.1.0", "ruff==0.12.8", "mypy==1.17.1"]
+
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+ignore = ["E501", "B008"]
+
+[tool.mypy]
+python_version = "3.12"
+plugins = ["pydantic.mypy"]
+check_untyped_defs = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+
+[tool.pytest.ini_options]
+pythonpath = ["backend"]
+testpaths = ["backend/tests"]
+
+[tool.setuptools.packages.find]
+where = ["backend"]
+include = ["app*"]

@@ -1,0 +1,6 @@
+Symbol,Side,Quantity,Price,Execution Time,Execution ID,Account
+NVDA,Buy,50,101.00,2026-08-05T14:17:32Z,e1,main
+NVDA,Buy,50,101.10,2026-08-05T14:18:10Z,e2,main
+NVDA,Sell,40,102.00,2026-08-05T14:40:00Z,e3,main
+NVDA,Sell,80,101.80,2026-08-05T14:45:00Z,e4,main
+NVDA,Buy,20,101.70,2026-08-05T14:50:00Z,e5,main

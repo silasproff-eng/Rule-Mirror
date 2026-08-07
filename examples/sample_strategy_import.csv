@@ -1,0 +1,11 @@
+Symbol,Side,Quantity,Price,Execution Time,Execution ID,Account,Strategy,Outcome
+NVDA,Buy,10,101.00,2026-08-05T14:17:32Z,demo-orb-open,training,Opening Range Breakout,win
+NVDA,Sell,10,102.40,2026-08-05T14:42:00Z,demo-orb-close,training,Opening Range Breakout,win
+AMD,Buy,20,155.20,2026-08-06T14:20:00Z,demo-vwap-open,training,VWAP Reclaim,loss
+AMD,Sell,20,154.70,2026-08-06T14:49:00Z,demo-vwap-close,training,VWAP Reclaim,loss
+MSFT,Buy,8,421.10,2026-08-06T15:05:00Z,demo-breakout-open,training,Moving Average Crossover,win
+MSFT,Sell,8,423.00,2026-08-06T15:35:00Z,demo-breakout-close,training,Moving Average Crossover,win
+TSLA,Buy,12,248.00,2026-08-07T14:18:00Z,demo-reversal-open,training,RSI Reversion,loss
+TSLA,Sell,12,246.20,2026-08-07T14:55:00Z,demo-reversal-close,training,RSI Reversion,loss
+SPY,Buy,15,632.50,2026-08-07T15:10:00Z,demo-range-open,training,Bollinger Band Reversion,win
+SPY,Sell,15,633.10,2026-08-07T15:45:00Z,demo-range-close,training,Bollinger Band Reversion,win
