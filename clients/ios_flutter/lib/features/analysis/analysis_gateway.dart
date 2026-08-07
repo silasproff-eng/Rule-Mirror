@@ -158,6 +158,7 @@ class HttpAnalysisGateway implements AnalysisGateway {
   HttpAnalysisGateway({http.Client? client}) : client = client ?? http.Client();
   final http.Client client;
   String? accessToken;
+  String? accountEmail;
   String? lastTradeId;
   String? lastTradeRevisionId;
   String? lastFailedRunId;
@@ -182,6 +183,7 @@ class HttpAnalysisGateway implements AnalysisGateway {
         body: jsonEncode({'email': email, 'password': password}));
     final value = _decode(response);
     accessToken = value['access_token'] as String;
+    accountEmail = email;
     return value;
   }
 
@@ -220,8 +222,13 @@ class HttpAnalysisGateway implements AnalysisGateway {
 
   @override
   Future<AccountProfile> profile() async => _normalize(() async {
-        final value =
-            _decode(await client.get(_uri('/accounts/me'), headers: _headers));
+        if (accountEmail == null) {
+          throw const GatewayError(
+              'auth_required', 'Sign in to load your profile.');
+        }
+        final value = _decode(await client.get(
+            _uri('/accounts/${Uri.encodeComponent(accountEmail!)}'),
+            headers: _headers));
         return AccountProfile.fromJson(value);
       });
 

@@ -301,9 +301,50 @@ class _SearchTabState extends State<_SearchTab> {
       OutlinedButton.icon(
           onPressed: widget.onThemeChanged,
           icon: const Icon(Icons.brightness_6_outlined),
-          label: const Text('Toggle appearance'))
+          label: const Text('Toggle appearance')),
+      const SizedBox(height: 12),
+      Row(children: [
+        TextButton(
+            onPressed: () => Navigator.of(context).push(MaterialPageRoute(
+                builder: (_) =>
+                    const _LegalPage(title: 'Terms of Service', sections: [
+                      'Agreement',
+                      'Rule Mirror is educational analytics, not financial advice.',
+                      'Use the service lawfully and keep your account secure.',
+                      'Contact silas@rulemirror.com.'
+                    ]))),
+            child: const Text('Terms of Service')),
+        TextButton(
+            onPressed: () => Navigator.of(context).push(MaterialPageRoute(
+                builder: (_) =>
+                    const _LegalPage(title: 'Privacy Policy', sections: [
+                      'What we collect',
+                      'We use account and import data to provide the service.',
+                      'Public profiles share summary metrics only.',
+                      'Contact silas@rulemirror.com.'
+                    ]))),
+            child: const Text('Privacy Policy'))
+      ]),
     ]));
   }
+}
+
+class _LegalPage extends StatelessWidget {
+  const _LegalPage({required this.title, required this.sections});
+  final String title;
+  final List<String> sections;
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+      appBar: AppBar(title: Text(title)),
+      body: ListView(padding: const EdgeInsets.all(24), children: [
+        Text('Last updated August 7, 2026',
+            style: Theme.of(context).textTheme.labelMedium),
+        const SizedBox(height: 20),
+        ...sections.map((section) => Padding(
+            padding: const EdgeInsets.only(bottom: 18),
+            child: Text(section, style: Theme.of(context).textTheme.bodyLarge)))
+      ]));
 }
 
 class _DataTabState extends State<_DataTab> {
