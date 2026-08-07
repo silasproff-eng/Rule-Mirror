@@ -54,10 +54,7 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
   void initState() {
     super.initState();
     gateway = widget.gateway ?? HttpAnalysisGateway();
-    stage = widget.gateway == null
-        ? FlowStage.starting
-        : (widget.authenticated ? FlowStage.upload : FlowStage.auth);
-    if (widget.gateway == null) _preflight();
+    stage = widget.authenticated ? FlowStage.upload : FlowStage.auth;
   }
 
   Future<void> _preflight() async {
