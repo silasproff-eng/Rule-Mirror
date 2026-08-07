@@ -242,11 +242,15 @@ class _SearchTab extends StatefulWidget {
 
 class _SearchTabState extends State<_SearchTab> {
   final query = TextEditingController();
+  final name = TextEditingController();
+  String timezone = 'America/New_York';
+  bool publicProfile = false;
   Future<List<AccountProfile>>? results;
 
   @override
   void dispose() {
     query.dispose();
+    name.dispose();
     super.dispose();
   }
 
@@ -263,6 +267,49 @@ class _SearchTabState extends State<_SearchTab> {
       const Text(
           'Search public accounts by email and manage your workspace preferences.'),
       const SizedBox(height: 24),
+      TextField(
+          controller: name,
+          decoration: const InputDecoration(
+              labelText: 'Display name',
+              prefixIcon: Icon(Icons.badge_outlined))),
+      const SizedBox(height: 12),
+      DropdownButtonFormField<String>(
+          value: timezone,
+          decoration: const InputDecoration(labelText: 'Timezone'),
+          items: const [
+            DropdownMenuItem(
+                value: 'America/New_York', child: Text('America/New_York')),
+            DropdownMenuItem(
+                value: 'America/Chicago', child: Text('America/Chicago')),
+            DropdownMenuItem(
+                value: 'America/Los_Angeles',
+                child: Text('America/Los_Angeles')),
+            DropdownMenuItem(value: 'UTC', child: Text('UTC'))
+          ],
+          onChanged: (value) {
+            if (value != null) setState(() => timezone = value);
+          }),
+      const SizedBox(height: 12),
+      FilledButton.icon(
+          onPressed: () async {
+            await widget.gateway.updateProfile(name.text.trim());
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Profile saved.')));
+            }
+          },
+          icon: const Icon(Icons.save_outlined),
+          label: const Text('Save profile')),
+      SwitchListTile.adaptive(
+          title: const Text('Public profile'),
+          subtitle: Text(publicProfile
+              ? 'Summary metrics are visible in account search.'
+              : 'Private by default.'),
+          value: publicProfile,
+          onChanged: (value) async {
+            await widget.gateway.setPublicProfile(value);
+            if (mounted) setState(() => publicProfile = value);
+          }),
       TextField(
           controller: query,
           textInputAction: TextInputAction.search,
@@ -302,6 +349,35 @@ class _SearchTabState extends State<_SearchTab> {
           onPressed: widget.onThemeChanged,
           icon: const Icon(Icons.brightness_6_outlined),
           label: const Text('Toggle appearance')),
+      OutlinedButton.icon(
+          onPressed: () async {
+            await widget.gateway.logout();
+            if (mounted) {
+              ScaffoldMessenger.of(context)
+                  .showSnackBar(const SnackBar(content: Text('Signed out.')));
+            }
+          },
+          icon: const Icon(Icons.logout),
+          label: const Text('Sign out')),
+      TextButton(
+          onPressed: () async {
+            final confirm = await showDialog<bool>(
+                context: context,
+                builder: (context) => AlertDialog(
+                        title: const Text('Delete account?'),
+                        content: const Text(
+                            'This removes your imports, trades, analyses, and sessions.'),
+                        actions: [
+                          TextButton(
+                              onPressed: () => Navigator.pop(context, false),
+                              child: const Text('Cancel')),
+                          FilledButton(
+                              onPressed: () => Navigator.pop(context, true),
+                              child: const Text('Delete'))
+                        ]));
+            if (confirm == true) await widget.gateway.deleteAccount();
+          },
+          child: const Text('Delete account')),
       const SizedBox(height: 12),
       Row(children: [
         TextButton(

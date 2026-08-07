@@ -158,6 +158,7 @@ class HttpAnalysisGateway implements AnalysisGateway {
   HttpAnalysisGateway({http.Client? client}) : client = client ?? http.Client();
   final http.Client client;
   String? accessToken;
+  String? refreshToken;
   String? accountEmail;
   String? lastTradeId;
   String? lastTradeRevisionId;
@@ -183,6 +184,7 @@ class HttpAnalysisGateway implements AnalysisGateway {
         body: jsonEncode({'email': email, 'password': password}));
     final value = _decode(response);
     accessToken = value['access_token'] as String;
+    refreshToken = value['refresh_token'] as String?;
     accountEmail = email;
     return value;
   }
@@ -240,6 +242,21 @@ class HttpAnalysisGateway implements AnalysisGateway {
             body: jsonEncode({'display_name': displayName}));
         return AccountProfile.fromJson(_decode(response));
       });
+
+  Future<void> logout() async {
+    if (refreshToken == null) return;
+    await client.post(_uri('/auth/logout'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'refresh_token': refreshToken}));
+    accessToken = null;
+    refreshToken = null;
+  }
+
+  Future<void> deleteAccount() async {
+    _decode(await client.delete(_uri('/account'), headers: _headers));
+    accessToken = null;
+    refreshToken = null;
+  }
 
   @override
   Future<void> setPublicProfile(bool enabled) async => _normalize(() async {
