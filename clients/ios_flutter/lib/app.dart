@@ -172,7 +172,7 @@ class _SplashScreen extends StatelessWidget {
                   color: moss, borderRadius: BorderRadius.circular(18)),
               child: Icon(Icons.analytics_outlined, color: forest, size: 32)),
           const SizedBox(height: 22),
-          Text('RuleMirror',
+          Text('Rule Mirror',
               style: Theme.of(context)
                   .textTheme
                   .headlineSmall
@@ -204,7 +204,7 @@ class _HomeTab extends StatelessWidget {
                         mainAxisAlignment: MainAxisAlignment.center,
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text('RuleMirror',
+                          Text('Rule Mirror',
                               style: Theme.of(context).textTheme.labelLarge),
                           const SizedBox(height: 12),
                           Text('See the decision clearly.',
