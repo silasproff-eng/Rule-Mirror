@@ -8,6 +8,7 @@ import 'analysis_models.dart';
 import 'analysis_gateway.dart';
 
 enum FlowStage {
+  starting,
   auth,
   upload,
   mapping,
@@ -19,7 +20,7 @@ enum FlowStage {
   insufficient
 }
 
-enum ErrorRecovery { auth, upload, mapping, retryAnalysis }
+enum ErrorRecovery { auth, upload, mapping, retryAnalysis, server }
 
 class AnalysisScreen extends StatefulWidget {
   const AnalysisScreen(
@@ -53,12 +54,40 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
   void initState() {
     super.initState();
     gateway = widget.gateway ?? HttpAnalysisGateway();
-    stage = widget.authenticated ? FlowStage.upload : FlowStage.auth;
+    stage = widget.gateway == null
+        ? FlowStage.starting
+        : (widget.authenticated ? FlowStage.upload : FlowStage.auth);
+    if (widget.gateway == null) _preflight();
+  }
+
+  Future<void> _preflight() async {
+    try {
+      await gateway.healthCheck();
+      if (mounted)
+        setState(() =>
+            stage = widget.authenticated ? FlowStage.upload : FlowStage.auth);
+    } on GatewayError catch (error) {
+      if (mounted)
+        setState(() {
+          errorTitle = 'Server unavailable';
+          errorDetail = error.message;
+          errorRecovery = ErrorRecovery.server;
+          stage = FlowStage.error;
+        });
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     final wide = MediaQuery.sizeOf(context).width >= 900;
+    if (stage == FlowStage.starting)
+      return const Scaffold(
+          body: ColoredBox(
+              color: Color(0xfff7f7f4),
+              child: _ProgressPanel(
+                  title: 'Connecting to RuleMirror',
+                  detail: 'Checking the secure analysis service.',
+                  progress: 0.12)));
     return Scaffold(
       body: SafeArea(
         child: Row(
@@ -90,6 +119,10 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
 
   Widget _content(bool wide) {
     return switch (stage) {
+      FlowStage.starting => const _ProgressPanel(
+          title: 'Connecting to RuleMirror',
+          detail: 'Checking the secure analysis service.',
+          progress: 0.12),
       FlowStage.auth => _AuthPanel(onSubmit: _authenticate),
       FlowStage.upload => _UploadPanel(onContinue: _selectFile),
       FlowStage.mapping => _MappingPanel(
@@ -123,6 +156,7 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
             ErrorRecovery.upload => 'Choose another file',
             ErrorRecovery.mapping => 'Review mapping',
             ErrorRecovery.retryAnalysis => 'Retry analysis',
+            ErrorRecovery.server => 'Retry connection',
           },
           onAction: _recover),
       FlowStage.insufficient => _ResultView(
@@ -166,9 +200,11 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
   }
 
   Future<void> _selectFile() async {
+    if (mounted) setState(() => stage = FlowStage.importing);
     try {
       final selected = await (widget.fileSelector ?? _defaultFileSelector)();
       if (selected == null) {
+        if (mounted) setState(() => stage = FlowStage.upload);
         return;
       }
       bytes = selected.bytes;
@@ -261,6 +297,11 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
   }
 
   void _recover() {
+    if (errorRecovery == ErrorRecovery.server) {
+      setState(() => stage = FlowStage.starting);
+      _preflight();
+      return;
+    }
     if (errorRecovery == ErrorRecovery.retryAnalysis) {
       _retryAnalysis();
       return;
@@ -270,6 +311,7 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
           ErrorRecovery.upload => FlowStage.upload,
           ErrorRecovery.mapping => FlowStage.mapping,
           ErrorRecovery.retryAnalysis => FlowStage.analyzing,
+          ErrorRecovery.server => FlowStage.starting,
         });
   }
 

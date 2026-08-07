@@ -57,6 +57,7 @@ class AffectedTrade {
 }
 
 abstract class AnalysisGateway {
+  Future<void> healthCheck();
   Future<void> register(String email, String password);
   Future<void> login(String email, String password);
   Future<ImportPreview> preview(Uint8List bytes, String filename);
@@ -73,6 +74,15 @@ class HttpAnalysisGateway implements AnalysisGateway {
   String? lastTradeId;
   String? lastTradeRevisionId;
   String? lastFailedRunId;
+
+  @override
+  Future<void> healthCheck() async {
+    final base = AppConfig.apiBaseUrl.replaceFirst(RegExp(r'/api/v1/?$'), '');
+    await _normalize(() async {
+      final response = await client.get(Uri.parse('$base/health'));
+      _decode(response);
+    }, timeout: const Duration(seconds: 5));
+  }
 
   Uri _uri(String path) => Uri.parse('${AppConfig.apiBaseUrl}$path');
 

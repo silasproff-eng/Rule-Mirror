@@ -1,5 +1,6 @@
-from datetime import datetime, timedelta
+from datetime import datetime, time, timedelta
 from decimal import Decimal, InvalidOperation
+from zoneinfo import ZoneInfo
 
 import httpx
 
@@ -61,7 +62,15 @@ class TwelveDataProvider(MarketDataProvider):
             raise MarketDataMalformed("Quote context was malformed") from error
 
     async def get_session(self, instrument: str, at: datetime) -> Session:
-        raise MarketDataError("Session lookup is disabled until licensed activation")
+        eastern = ZoneInfo("America/New_York")
+        local = at.astimezone(eastern)
+        if local.weekday() >= 5:
+            raise MarketDataError("The trade timestamp is outside regular market sessions")
+        opened = datetime.combine(local.date(), time(9, 30), tzinfo=eastern)
+        closed = datetime.combine(local.date(), time(16, 0), tzinfo=eastern)
+        if local < opened or local > closed:
+            raise MarketDataError("The trade timestamp is outside regular market sessions")
+        return Session(opened, closed, "America/New_York")
 
     async def get_instrument_metadata(self, instrument: str) -> InstrumentMetadata:
         payload = await self._request("/symbol_search", {"symbol": instrument})

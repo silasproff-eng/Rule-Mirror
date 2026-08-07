@@ -22,6 +22,9 @@ class FakeGateway implements AnalysisGateway {
   Map<String, String>? submittedMapping;
 
   @override
+  Future<void> healthCheck() async {}
+
+  @override
   Future<void> login(String email, String password) async {}
 
   @override

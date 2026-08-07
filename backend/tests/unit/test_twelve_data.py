@@ -45,3 +45,19 @@ async def test_timeout_is_typed():
     value = provider(timeout)
     with pytest.raises(MarketDataTimeout):
         await value.get_bars("NVDA", datetime.now(UTC), datetime.now(UTC), "1min")
+
+
+@pytest.mark.asyncio
+async def test_regular_session_is_resolved_in_eastern_time():
+    value = provider(lambda request: httpx.Response(200, json={}))
+    session = await value.get_session("NVDA", datetime(2026, 8, 5, 14, 0, tzinfo=UTC))
+    assert session.opens_at.hour == 9
+    assert session.opens_at.minute == 30
+    assert session.closes_at.hour == 16
+
+
+@pytest.mark.asyncio
+async def test_weekend_session_is_rejected():
+    value = provider(lambda request: httpx.Response(200, json={}))
+    with pytest.raises(MarketDataError):
+        await value.get_session("NVDA", datetime(2026, 8, 8, 14, 0, tzinfo=UTC))
