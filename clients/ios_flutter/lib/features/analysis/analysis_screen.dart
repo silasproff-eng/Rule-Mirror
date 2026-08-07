@@ -28,11 +28,13 @@ class AnalysisScreen extends StatefulWidget {
       this.gateway,
       this.fileSelector,
       this.authenticated = false,
+      this.onAuthenticated,
       super.key});
   final VoidCallback onThemeChanged;
   final AnalysisGateway? gateway;
   final Future<SelectedFile?> Function()? fileSelector;
   final bool authenticated;
+  final VoidCallback? onAuthenticated;
 
   @override
   State<AnalysisScreen> createState() => _AnalysisScreenState();
@@ -182,6 +184,7 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
         await gateway.login(email, password);
       }
       if (mounted) {
+        widget.onAuthenticated?.call();
         setState(() => stage = FlowStage.upload);
       }
     } on GatewayError catch (error) {

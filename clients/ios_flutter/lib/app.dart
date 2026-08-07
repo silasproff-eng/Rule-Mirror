@@ -80,6 +80,8 @@ class _LaunchShellState extends State<_LaunchShell>
   bool ready = false;
   late final PageController pages = PageController(initialPage: tab);
   final HttpAnalysisGateway gateway = HttpAnalysisGateway();
+  final TextEditingController topSearch = TextEditingController();
+  bool signedIn = false;
 
   @override
   void initState() {
@@ -89,10 +91,41 @@ class _LaunchShellState extends State<_LaunchShell>
     });
   }
 
+  void _showSearchResults(String query) {
+    if (query.length < 2 || !signedIn) return;
+    showModalBottomSheet<void>(
+        context: context,
+        showDragHandle: true,
+        builder: (context) => FutureBuilder<List<AccountProfile>>(
+            future: gateway.searchAccounts(query),
+            builder: (context, snapshot) {
+              if (snapshot.connectionState != ConnectionState.done) {
+                return const SizedBox(
+                    height: 220,
+                    child: Center(child: CircularProgressIndicator()));
+              }
+              if (snapshot.hasError || snapshot.data!.isEmpty) {
+                return const SizedBox(
+                    height: 220,
+                    child: Center(child: Text('No public accounts found.')));
+              }
+              return ListView(
+                  shrinkWrap: true,
+                  children: snapshot.data!
+                      .map((account) => ListTile(
+                          title: Text(account.displayName ?? account.username),
+                          subtitle: Text(account.username),
+                          trailing: Text(
+                              account.publicProfile ? 'Public' : 'Private')))
+                      .toList());
+            }));
+  }
+
   @override
   void dispose() {
     animation.dispose();
     pages.dispose();
+    topSearch.dispose();
     super.dispose();
   }
 
@@ -102,6 +135,18 @@ class _LaunchShellState extends State<_LaunchShell>
       return const _SplashScreen();
     }
     return Scaffold(
+      appBar: AppBar(title: const Text('Rule Mirror'), actions: [
+        SizedBox(
+            width: 220,
+            child: TextField(
+                controller: topSearch,
+                textInputAction: TextInputAction.search,
+                onSubmitted: (value) => _showSearchResults(value.trim()),
+                decoration: const InputDecoration(
+                    hintText: 'Search accounts by email',
+                    prefixIcon: Icon(Icons.search),
+                    border: InputBorder.none)))
+      ]),
       body: FadeTransition(
           opacity: CurvedAnimation(parent: animation, curve: Curves.easeOut),
           child: PageView(
@@ -109,10 +154,21 @@ class _LaunchShellState extends State<_LaunchShell>
               onPageChanged: (value) => setState(() => tab = value),
               children: [
                 const _HomeTab(),
-                _DataTab(title: 'My portfolio', load: gateway.portfolio),
+                _DataTab(
+                    key: ValueKey('portfolio-$signedIn'),
+                    authenticated: signedIn,
+                    title: 'My portfolio',
+                    load: gateway.portfolio),
                 AnalysisScreen(
-                    onThemeChanged: widget.onThemeChanged, gateway: gateway),
-                _DataTab(title: 'Trades', load: gateway.trades),
+                    onThemeChanged: widget.onThemeChanged,
+                    gateway: gateway,
+                    authenticated: signedIn,
+                    onAuthenticated: () => setState(() => signedIn = true)),
+                _DataTab(
+                    key: ValueKey('trades-$signedIn'),
+                    authenticated: signedIn,
+                    title: 'Trades',
+                    load: gateway.trades),
                 _SearchTab(
                     gateway: gateway, onThemeChanged: widget.onThemeChanged),
               ])),
@@ -223,7 +279,12 @@ class _HomeTab extends StatelessWidget {
 }
 
 class _DataTab extends StatefulWidget {
-  const _DataTab({required this.title, required this.load});
+  const _DataTab(
+      {super.key,
+      required this.authenticated,
+      required this.title,
+      required this.load});
+  final bool authenticated;
   final String title;
   final Future<Object> Function() load;
 
@@ -424,10 +485,16 @@ class _LegalPage extends StatelessWidget {
 }
 
 class _DataTabState extends State<_DataTab> {
-  late Future<Object> request = widget.load();
+  Future<Object>? request;
 
   @override
   Widget build(BuildContext context) {
+    if (!widget.authenticated) {
+      return _InfoTab(
+          title: widget.title,
+          detail: 'Sign in from Analyze to load your Rule Mirror data.');
+    }
+    request ??= widget.load();
     return SafeArea(
         child: FutureBuilder<Object>(
             future: request,
@@ -443,6 +510,42 @@ class _DataTabState extends State<_DataTab> {
                     onRetry: () => setState(() => request = widget.load()));
               }
               final value = snapshot.data;
+              if (value is PortfolioSummary) {
+                return ListView(padding: const EdgeInsets.all(24), children: [
+                  Text(widget.title,
+                      style: Theme.of(context)
+                          .textTheme
+                          .headlineMedium
+                          ?.copyWith(fontWeight: FontWeight.w700)),
+                  const SizedBox(height: 16),
+                  ...value.holdings.map((holding) => Card(
+                      child: ListTile(
+                          title: Text(holding.symbol),
+                          subtitle: Text(
+                              '${holding.quantity} units · ${holding.source}'),
+                          trailing: Text(holding.marketValue == null
+                              ? '—'
+                              : '\$${holding.marketValue!.toStringAsFixed(2)}')))),
+                ]);
+              }
+              if (value is List<TradeHistory>) {
+                return ListView(padding: const EdgeInsets.all(24), children: [
+                  Text(widget.title,
+                      style: Theme.of(context)
+                          .textTheme
+                          .headlineMedium
+                          ?.copyWith(fontWeight: FontWeight.w700)),
+                  const SizedBox(height: 16),
+                  ...value.map((trade) => Card(
+                      child: ListTile(
+                          title: Text(trade.symbol),
+                          subtitle: Text(
+                              '${trade.direction} · ${trade.closedAt == null ? 'Open' : 'Closed'}'),
+                          trailing: Text(trade.realizedPnl == null
+                              ? '—'
+                              : '\$${trade.realizedPnl!.toStringAsFixed(2)}')))),
+                ]);
+              }
               final detail = value is PortfolioSummary
                   ? '${value.holdings.length} holdings · ${value.portfolioValue == null ? 'No value yet' : '\$${value.portfolioValue!.toStringAsFixed(2)}'}'
                   : value is List<TradeHistory>
