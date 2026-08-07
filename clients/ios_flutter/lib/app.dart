@@ -59,6 +59,12 @@ class _StrategyAuditAppState extends State<StrategyAuditApp> {
           border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
           contentPadding:
               const EdgeInsets.symmetric(horizontal: 14, vertical: 13)),
+      navigationBarTheme: NavigationBarThemeData(
+          indicatorColor: colors.primary.withValues(alpha: 0.18),
+          labelTextStyle: WidgetStatePropertyAll(
+              TextStyle(color: colors.primary, fontWeight: FontWeight.w600)),
+          iconTheme:
+              WidgetStatePropertyAll(IconThemeData(color: colors.primary))),
     );
   }
 }
@@ -135,18 +141,17 @@ class _LaunchShellState extends State<_LaunchShell>
       return const _SplashScreen();
     }
     return Scaffold(
-      appBar: AppBar(title: const Text('Rule Mirror'), actions: [
-        SizedBox(
-            width: 220,
-            child: TextField(
-                controller: topSearch,
-                textInputAction: TextInputAction.search,
-                onSubmitted: (value) => _showSearchResults(value.trim()),
-                decoration: const InputDecoration(
-                    hintText: 'Search accounts by email',
-                    prefixIcon: Icon(Icons.search),
-                    border: InputBorder.none)))
-      ]),
+      appBar: AppBar(
+          centerTitle: true,
+          title: IconButton(
+              onPressed: () => showSearch<String>(
+                  context: context,
+                  delegate: _AccountSearchDelegate(
+                      gateway: gateway, signedIn: signedIn)),
+              style: IconButton.styleFrom(
+                  backgroundColor: Theme.of(context).colorScheme.primary,
+                  foregroundColor: Theme.of(context).colorScheme.onPrimary),
+              icon: const Icon(Icons.search))),
       body: FadeTransition(
           opacity: CurvedAnimation(parent: animation, curve: Curves.easeOut),
           child: PageView(
@@ -237,6 +242,51 @@ class _SplashScreen extends StatelessWidget {
               child: CircularProgressIndicator(strokeWidth: 2, color: moss))
         ])));
   }
+}
+
+class _AccountSearchDelegate extends SearchDelegate<String> {
+  _AccountSearchDelegate({required this.gateway, required this.signedIn});
+  final HttpAnalysisGateway gateway;
+  final bool signedIn;
+
+  @override
+  List<Widget>? buildActions(BuildContext context) => [
+        if (query.isNotEmpty)
+          IconButton(onPressed: () => query = '', icon: const Icon(Icons.clear))
+      ];
+
+  @override
+  Widget? buildLeading(BuildContext context) => IconButton(
+      onPressed: () => close(context, ''), icon: const Icon(Icons.arrow_back));
+
+  @override
+  Widget buildResults(BuildContext context) {
+    if (!signedIn || query.trim().length < 2) {
+      return const Center(
+          child: Text('Enter at least two characters after signing in.'));
+    }
+    return FutureBuilder<List<AccountProfile>>(
+        future: gateway.searchAccounts(query.trim()),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState != ConnectionState.done) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          if (snapshot.hasError || snapshot.data!.isEmpty) {
+            return const Center(child: Text('No public accounts found.'));
+          }
+          return ListView(
+              children: snapshot.data!
+                  .map((account) => ListTile(
+                      title: Text(account.displayName ?? account.username),
+                      subtitle: Text(account.username),
+                      trailing:
+                          Text(account.publicProfile ? 'Public' : 'Private')))
+                  .toList());
+        });
+  }
+
+  @override
+  Widget buildSuggestions(BuildContext context) => buildResults(context);
 }
 
 class _HomeTab extends StatelessWidget {
@@ -379,10 +429,18 @@ class _SearchTabState extends State<_SearchTab> {
           decoration: InputDecoration(
               labelText: 'Search accounts by email',
               prefixIcon: const Icon(Icons.search),
-              suffixIcon: IconButton(
-                  onPressed: () => setState(() => results =
-                      widget.gateway.searchAccounts(query.text.trim())),
-                  icon: const Icon(Icons.arrow_forward)))),
+              suffixIcon: Padding(
+                  padding: const EdgeInsets.all(7),
+                  child: IconButton(
+                      style: IconButton.styleFrom(
+                          backgroundColor:
+                              Theme.of(context).colorScheme.primary,
+                          foregroundColor:
+                              Theme.of(context).colorScheme.onPrimary,
+                          shape: const CircleBorder()),
+                      onPressed: () => setState(() => results =
+                          widget.gateway.searchAccounts(query.text.trim())),
+                      icon: const Icon(Icons.search, size: 18))))),
       const SizedBox(height: 16),
       if (results != null)
         FutureBuilder<List<AccountProfile>>(
@@ -460,7 +518,7 @@ class _SearchTabState extends State<_SearchTab> {
                       'Public profiles share summary metrics only.',
                       'Contact silas@rulemirror.com.'
                     ]))),
-            child: const Text('Privacy Policy'))
+            child: const Text('Privacy Policy')),
       ]),
     ]));
   }
@@ -518,6 +576,12 @@ class _DataTabState extends State<_DataTab> {
                           .headlineMedium
                           ?.copyWith(fontWeight: FontWeight.w700)),
                   const SizedBox(height: 16),
+                  if (value.holdings.isEmpty)
+                    const Card(
+                        child: Padding(
+                            padding: EdgeInsets.all(24),
+                            child: Text(
+                                'No holdings yet. Import a portfolio CSV from the Rule Mirror website to sync this account.'))),
                   ...value.holdings.map((holding) => Card(
                       child: ListTile(
                           title: Text(holding.symbol),
