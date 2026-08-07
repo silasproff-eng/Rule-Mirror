@@ -31,6 +31,29 @@ class FakeGateway implements AnalysisGateway {
   Future<void> register(String email, String password) async {}
 
   @override
+  Future<PortfolioSummary> portfolio() async =>
+      const PortfolioSummary(holdings: []);
+
+  @override
+  Future<List<TradeHistory>> trades() async => const [];
+
+  @override
+  Future<void> deleteTrade(String tradeId) async {}
+
+  @override
+  Future<AccountProfile> profile() async => const AccountProfile(
+      username: 'test@example.com', publicProfile: false, metrics: {});
+
+  @override
+  Future<AccountProfile> updateProfile(String displayName) async => profile();
+
+  @override
+  Future<void> setPublicProfile(bool enabled) async {}
+
+  @override
+  Future<List<AccountProfile>> searchAccounts(String query) async => const [];
+
+  @override
   Future<ImportPreview> preview(Uint8List bytes, String filename) async {
     if (previewFailure != null) throw previewFailure!;
     return const ImportPreview([

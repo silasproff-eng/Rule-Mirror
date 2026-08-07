@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'core/app_config.dart';
+import 'features/analysis/analysis_gateway.dart';
 import 'features/analysis/analysis_screen.dart';
 
 class StrategyAuditApp extends StatefulWidget {
@@ -78,6 +79,7 @@ class _LaunchShellState extends State<_LaunchShell>
   int tab = 2;
   bool ready = false;
   late final PageController pages = PageController(initialPage: tab);
+  final HttpAnalysisGateway gateway = HttpAnalysisGateway();
 
   @override
   void initState() {
@@ -107,20 +109,12 @@ class _LaunchShellState extends State<_LaunchShell>
               onPageChanged: (value) => setState(() => tab = value),
               children: [
                 const _HomeTab(),
-                const _InfoTab(
-                    title: 'My portfolio',
-                    detail:
-                        'Your holdings and portfolio value will appear here after a holdings import.'),
-                AnalysisScreen(onThemeChanged: widget.onThemeChanged),
-                const _InfoTab(
-                    title: 'Trades',
-                    detail:
-                        'Your reconstructed trade history will appear here after you import an execution export.'),
-                _InfoTab(
-                    title: 'Profile & settings',
-                    detail:
-                        'Manage your workspace, privacy, appearance, and public profile.',
-                    onThemeChanged: widget.onThemeChanged),
+                _DataTab(title: 'My portfolio', load: gateway.portfolio),
+                AnalysisScreen(
+                    onThemeChanged: widget.onThemeChanged, gateway: gateway),
+                _DataTab(title: 'Trades', load: gateway.trades),
+                _SearchTab(
+                    gateway: gateway, onThemeChanged: widget.onThemeChanged),
               ])),
       bottomNavigationBar: NavigationBar(
           selectedIndex: tab,
@@ -228,12 +222,133 @@ class _HomeTab extends StatelessWidget {
   }
 }
 
+class _DataTab extends StatefulWidget {
+  const _DataTab({required this.title, required this.load});
+  final String title;
+  final Future<Object> Function() load;
+
+  @override
+  State<_DataTab> createState() => _DataTabState();
+}
+
+class _SearchTab extends StatefulWidget {
+  const _SearchTab({required this.gateway, required this.onThemeChanged});
+  final HttpAnalysisGateway gateway;
+  final VoidCallback onThemeChanged;
+
+  @override
+  State<_SearchTab> createState() => _SearchTabState();
+}
+
+class _SearchTabState extends State<_SearchTab> {
+  final query = TextEditingController();
+  Future<List<AccountProfile>>? results;
+
+  @override
+  void dispose() {
+    query.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+        child: ListView(padding: const EdgeInsets.all(24), children: [
+      Text('Profile & settings',
+          style: Theme.of(context)
+              .textTheme
+              .headlineMedium
+              ?.copyWith(fontWeight: FontWeight.w700)),
+      const SizedBox(height: 8),
+      const Text(
+          'Search public accounts by email and manage your workspace preferences.'),
+      const SizedBox(height: 24),
+      TextField(
+          controller: query,
+          textInputAction: TextInputAction.search,
+          onSubmitted: (value) => setState(
+              () => results = widget.gateway.searchAccounts(value.trim())),
+          decoration: InputDecoration(
+              labelText: 'Search accounts by email',
+              prefixIcon: const Icon(Icons.search),
+              suffixIcon: IconButton(
+                  onPressed: () => setState(() => results =
+                      widget.gateway.searchAccounts(query.text.trim())),
+                  icon: const Icon(Icons.arrow_forward)))),
+      const SizedBox(height: 16),
+      if (results != null)
+        FutureBuilder<List<AccountProfile>>(
+            future: results,
+            builder: (context, snapshot) {
+              if (snapshot.connectionState != ConnectionState.done) {
+                return const Center(child: CircularProgressIndicator());
+              }
+              if (snapshot.hasError) {
+                return const Text('Search is unavailable right now.');
+              }
+              return Column(
+                  children: snapshot.data!
+                      .map((account) => ListTile(
+                          leading:
+                              const CircleAvatar(child: Icon(Icons.person)),
+                          title: Text(account.displayName ?? account.username),
+                          subtitle: Text(account.username),
+                          trailing: Text(
+                              account.publicProfile ? 'Public' : 'Private')))
+                      .toList());
+            }),
+      const SizedBox(height: 24),
+      OutlinedButton.icon(
+          onPressed: widget.onThemeChanged,
+          icon: const Icon(Icons.brightness_6_outlined),
+          label: const Text('Toggle appearance'))
+    ]));
+  }
+}
+
+class _DataTabState extends State<_DataTab> {
+  late Future<Object> request = widget.load();
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+        child: FutureBuilder<Object>(
+            future: request,
+            builder: (context, snapshot) {
+              if (snapshot.connectionState != ConnectionState.done) {
+                return const Center(child: CircularProgressIndicator());
+              }
+              if (snapshot.hasError) {
+                return _InfoTab(
+                    title: widget.title,
+                    detail:
+                        'Sign in to load your Rule Mirror data, then pull to refresh.',
+                    onRetry: () => setState(() => request = widget.load()));
+              }
+              final value = snapshot.data;
+              final detail = value is PortfolioSummary
+                  ? '${value.holdings.length} holdings · ${value.portfolioValue == null ? 'No value yet' : '\$${value.portfolioValue!.toStringAsFixed(2)}'}'
+                  : value is List<TradeHistory>
+                      ? '${value.length} reconstructed trades'
+                      : 'Data synced';
+              return _InfoTab(
+                  title: widget.title,
+                  detail: detail,
+                  onRetry: () => setState(() => request = widget.load()));
+            }));
+  }
+}
+
 class _InfoTab extends StatelessWidget {
   const _InfoTab(
-      {required this.title, required this.detail, this.onThemeChanged});
+      {required this.title,
+      required this.detail,
+      this.onThemeChanged,
+      this.onRetry});
   final String title;
   final String detail;
   final VoidCallback? onThemeChanged;
+  final VoidCallback? onRetry;
 
   @override
   Widget build(BuildContext context) {
@@ -251,6 +366,13 @@ class _InfoTab extends StatelessWidget {
                               ?.copyWith(fontWeight: FontWeight.w700)),
                       const SizedBox(height: 12),
                       Text(detail, textAlign: TextAlign.center),
+                      if (onRetry != null) ...[
+                        const SizedBox(height: 20),
+                        OutlinedButton.icon(
+                            onPressed: onRetry,
+                            icon: const Icon(Icons.refresh),
+                            label: const Text('Refresh'))
+                      ],
                       if (onThemeChanged != null) ...[
                         const SizedBox(height: 28),
                         OutlinedButton.icon(

@@ -23,6 +23,86 @@ class ImportPreview {
   final List<dynamic> issues;
 }
 
+class PortfolioHolding {
+  const PortfolioHolding(
+      {required this.symbol,
+      required this.quantity,
+      this.marketValue,
+      required this.source});
+  final String symbol;
+  final double quantity;
+  final double? marketValue;
+  final String source;
+  factory PortfolioHolding.fromJson(Map<String, dynamic> value) =>
+      PortfolioHolding(
+          symbol: value['symbol'] as String,
+          quantity: (value['quantity'] as num).toDouble(),
+          marketValue: (value['market_value'] as num?)?.toDouble(),
+          source: value['source'] as String);
+}
+
+class PortfolioSummary {
+  const PortfolioSummary({this.portfolioValue, required this.holdings});
+  final double? portfolioValue;
+  final List<PortfolioHolding> holdings;
+  factory PortfolioSummary.fromJson(
+          Map<String, dynamic> value) =>
+      PortfolioSummary(
+          portfolioValue: (value['portfolio_value'] as num?)?.toDouble(),
+          holdings: (value['holdings'] as List<dynamic>)
+              .map((item) =>
+                  PortfolioHolding.fromJson(item as Map<String, dynamic>))
+              .toList());
+}
+
+class TradeHistory {
+  const TradeHistory(
+      {required this.tradeId,
+      required this.symbol,
+      required this.direction,
+      required this.openedAt,
+      this.closedAt,
+      this.realizedPnl,
+      this.score,
+      required this.analyzed});
+  final String tradeId;
+  final String symbol;
+  final String direction;
+  final DateTime openedAt;
+  final DateTime? closedAt;
+  final double? realizedPnl;
+  final double? score;
+  final bool analyzed;
+  factory TradeHistory.fromJson(Map<String, dynamic> value) => TradeHistory(
+      tradeId: value['trade_id'] as String,
+      symbol: value['symbol'] as String,
+      direction: value['direction'] as String,
+      openedAt: DateTime.parse(value['opened_at'] as String),
+      closedAt: value['closed_at'] == null
+          ? null
+          : DateTime.parse(value['closed_at'] as String),
+      realizedPnl: (value['realized_pnl'] as num?)?.toDouble(),
+      score: (value['score'] as num?)?.toDouble(),
+      analyzed: value['analyzed'] as bool);
+}
+
+class AccountProfile {
+  const AccountProfile(
+      {required this.username,
+      this.displayName,
+      required this.publicProfile,
+      required this.metrics});
+  final String username;
+  final String? displayName;
+  final bool publicProfile;
+  final Map<String, dynamic> metrics;
+  factory AccountProfile.fromJson(Map<String, dynamic> value) => AccountProfile(
+      username: value['username'] as String,
+      displayName: value['display_name'] as String?,
+      publicProfile: value['public_profile'] as bool,
+      metrics: Map<String, dynamic>.from(value['metrics'] as Map));
+}
+
 class AffectedTrade {
   const AffectedTrade(
       {required this.tradeId,
@@ -60,6 +140,13 @@ abstract class AnalysisGateway {
   Future<void> healthCheck();
   Future<void> register(String email, String password);
   Future<void> login(String email, String password);
+  Future<PortfolioSummary> portfolio();
+  Future<List<TradeHistory>> trades();
+  Future<void> deleteTrade(String tradeId);
+  Future<AccountProfile> profile();
+  Future<AccountProfile> updateProfile(String displayName);
+  Future<void> setPublicProfile(bool enabled);
+  Future<List<AccountProfile>> searchAccounts(String query);
   Future<ImportPreview> preview(Uint8List bytes, String filename);
   Future<List<AffectedTrade>> importExecutions(Uint8List bytes, String filename,
       Map<String, String> mapping, String timezone);
@@ -107,6 +194,65 @@ class HttpAnalysisGateway implements AnalysisGateway {
   Future<void> login(String email, String password) async {
     await _normalize(() => _tokens('/auth/login', email, password));
   }
+
+  @override
+  Future<PortfolioSummary> portfolio() async => _normalize(() async {
+        final value =
+            _decode(await client.get(_uri('/portfolio'), headers: _headers));
+        return PortfolioSummary.fromJson(value);
+      });
+
+  @override
+  Future<List<TradeHistory>> trades() async => _normalize(() async {
+        final decoded = jsonDecode(
+                (await client.get(_uri('/trades'), headers: _headers)).body)
+            as List<dynamic>;
+        return decoded
+            .map((item) => TradeHistory.fromJson(item as Map<String, dynamic>))
+            .toList();
+      });
+
+  @override
+  Future<void> deleteTrade(String tradeId) async => _normalize(() async {
+        _decode(
+            await client.delete(_uri('/trades/$tradeId'), headers: _headers));
+      });
+
+  @override
+  Future<AccountProfile> profile() async => _normalize(() async {
+        final value =
+            _decode(await client.get(_uri('/accounts/me'), headers: _headers));
+        return AccountProfile.fromJson(value);
+      });
+
+  @override
+  Future<AccountProfile> updateProfile(String displayName) async =>
+      _normalize(() async {
+        final response = await client.put(_uri('/account/profile'),
+            headers: {..._headers, 'Content-Type': 'application/json'},
+            body: jsonEncode({'display_name': displayName}));
+        return AccountProfile.fromJson(_decode(response));
+      });
+
+  @override
+  Future<void> setPublicProfile(bool enabled) async => _normalize(() async {
+        _decode(await client.put(
+            _uri('/account/public-profile?enabled=$enabled'),
+            headers: _headers));
+      });
+
+  @override
+  Future<List<AccountProfile>> searchAccounts(String query) async =>
+      _normalize(() async {
+        final decoded = jsonDecode((await client.get(
+                _uri('/accounts/search?q=${Uri.encodeQueryComponent(query)}'),
+                headers: _headers))
+            .body) as List<dynamic>;
+        return decoded
+            .map(
+                (item) => AccountProfile.fromJson(item as Map<String, dynamic>))
+            .toList();
+      });
 
   @override
   Future<ImportPreview> preview(Uint8List bytes, String filename) async {
