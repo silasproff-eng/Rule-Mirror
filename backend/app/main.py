@@ -11,13 +11,14 @@ from app.core.config import get_settings
 
 CLIENT_SEGMENT = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]*")
 RESERVED_ROUTES = {"api", "assets", "docs", "health", "openapi.json", "redoc"}
+ROOT_STATIC_FILES = {"apple-touch-icon.png", "favicon-32.png", "rulemirror-logo.png"}
 DEFAULT_WEB_DIST = Path(__file__).resolve().parents[2] / "web" / "dist"
 
 
 def valid_client_route(path: str) -> bool:
     if not path:
         return True
-    if path in {"terms.html", "privacy.html"}:
+    if path in {"terms.html", "privacy.html"} | ROOT_STATIC_FILES:
         return True
     segments = path.split("/")
     return segments[0] not in RESERVED_ROUTES and all(CLIENT_SEGMENT.fullmatch(value) for value in segments)
