@@ -51,12 +51,8 @@ button { color: inherit; }
 button:focus-visible, input:focus-visible, select:focus-visible { outline: 3px solid color-mix(in srgb, var(--brand) 35%, transparent); outline-offset: 3px; }
 
 .icon { width: 18px; height: 18px; flex: 0 0 auto; }
-.brand-line { display: flex; align-items: center; gap: 10px; color: var(--brand-deep); font-weight: 800; letter-spacing: -.04em; font-size: 18px; }
-.brand-mark { display: flex; align-items: end; gap: 3px; width: 23px; height: 24px; }
-.brand-mark span { display: block; width: 5px; border-radius: 6px 6px 2px 2px; background: var(--brand); }
-.brand-mark span:nth-child(1) { height: 11px; opacity: .55; }
-.brand-mark span:nth-child(2) { height: 18px; opacity: .78; }
-.brand-mark span:nth-child(3) { height: 24px; }
+.brand-line { display: flex; align-items: center; color: var(--brand-deep); }
+.brand-logo { display: block; width: 132px; height: 52px; border-radius: 8px; object-fit: contain; background: #fff; }
 .eyebrow { margin: 0 0 9px; color: var(--brand); font: 500 11px/1.2 'DM Mono', monospace; letter-spacing: .09em; text-transform: uppercase; }
 .muted { color: var(--muted); }
 .page-copy { max-width: 590px; margin: 10px 0 0; color: var(--muted); font-size: 15px; }
@@ -68,8 +64,7 @@ h3 { margin-bottom: 7px; font-size: 17px; }
 
 .auth-layout { display: grid; min-height: 100vh; grid-template-columns: minmax(0, 1.1fr) minmax(400px, .9fr); }
 .auth-story { display: flex; flex-direction: column; min-height: 100vh; padding: 46px clamp(32px, 7vw, 112px) 40px; color: #e9f2ec; background: var(--brand-deep); }
-.auth-story .brand-line { color: #e9f2ec; }
-.auth-story .brand-mark span { background: var(--accent); }
+.auth-story .brand-logo { width: 148px; height: 58px; }
 .story-content { align-self: center; max-width: 570px; margin: auto 0; padding: 100px 0; }
 .story-content .eyebrow { color: var(--accent); }
 .story-content h1 { margin-bottom: 26px; font-size: clamp(42px, 6vw, 76px); line-height: .99; }
@@ -368,7 +363,8 @@ h3 { margin-bottom: 7px; font-size: 17px; }
   .auth-layout { grid-template-columns: 1fr; }
   .auth-story { display: none; }
   .auth-panel { min-height: 100vh; padding: 28px 22px; }
-  .mobile-brand { display: flex; align-items: center; gap: 10px; margin-bottom: 70px; color: var(--brand-deep); font-weight: 800; letter-spacing: -.04em; font-size: 18px; }
+  .mobile-brand { display: flex; align-items: center; margin-bottom: 70px; }
+  .mobile-brand .brand-logo { width: 148px; height: 58px; }
   .sidebar { left: -252px; transition: left .2s ease; box-shadow: 12px 0 40px rgba(0,0,0,.1); }
   .sidebar.open { left: 0; }
   .mobile-overlay.visible { position: fixed; z-index: 10; inset: 0; display: block; background: rgba(13, 28, 23, .32); }

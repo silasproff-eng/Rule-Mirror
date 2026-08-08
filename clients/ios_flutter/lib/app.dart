@@ -221,20 +221,16 @@ class _SplashScreen extends StatelessWidget {
             child:
                 Column(mainAxisAlignment: MainAxisAlignment.center, children: [
           Container(
-              width: 62,
-              height: 62,
+              width: 214,
+              height: 214,
+              padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
-                  color: moss, borderRadius: BorderRadius.circular(18)),
-              child: Icon(Icons.analytics_outlined, color: forest, size: 32)),
+                  color: Colors.white, borderRadius: BorderRadius.circular(22)),
+              child: Image.asset('assets/rulemirror-logo.png',
+                  fit: BoxFit.contain)),
           const SizedBox(height: 22),
-          Text('Rule Mirror',
-              style: Theme.of(context)
-                  .textTheme
-                  .headlineSmall
-                  ?.copyWith(fontWeight: FontWeight.w700)),
-          const SizedBox(height: 8),
           Text('A clearer record of your decisions',
-              style: TextStyle(color: moss)),
+              style: TextStyle(color: moss, fontWeight: FontWeight.w500)),
           const SizedBox(height: 28),
           SizedBox(
               width: 22,

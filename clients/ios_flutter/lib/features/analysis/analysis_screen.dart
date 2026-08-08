@@ -565,49 +565,12 @@ class _Brand extends StatelessWidget {
   Widget build(BuildContext context) {
     return Semantics(
         label: '${AppConfig.displayName} home',
-        child: Row(mainAxisSize: MainAxisSize.min, children: [
-          const _RuleMirrorMark(),
-          const SizedBox(width: 10),
-          Text(AppConfig.displayName,
-              style: const TextStyle(
-                  fontWeight: FontWeight.w700,
-                  fontSize: 16,
-                  letterSpacing: -.2))
-        ]));
+        child: SizedBox(
+            width: 126,
+            height: 50,
+            child: Image.asset('assets/rulemirror-logo.png',
+                fit: BoxFit.contain)));
   }
-}
-
-class _RuleMirrorMark extends StatelessWidget {
-  const _RuleMirrorMark();
-
-  @override
-  Widget build(BuildContext context) => const SizedBox(
-      width: 29,
-      height: 29,
-      child: CustomPaint(painter: _RuleMirrorMarkPainter()));
-}
-
-class _RuleMirrorMarkPainter extends CustomPainter {
-  const _RuleMirrorMarkPainter();
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final scale = size.width / 29;
-    canvas.drawRRect(
-        RRect.fromRectAndRadius(Offset.zero & size, Radius.circular(7 * scale)),
-        Paint()..color = const Color(0xff315e51));
-    final light = Paint()..color = const Color(0xffd7f4ea);
-    final mid = Paint()..color = const Color(0xff8cbcac);
-    canvas.drawRect(
-        Rect.fromLTWH(8 * scale, 7 * scale, 5 * scale, 15 * scale), light);
-    canvas.drawRect(
-        Rect.fromLTWH(16 * scale, 7 * scale, 5 * scale, 15 * scale), light);
-    canvas.drawRect(
-        Rect.fromLTWH(11 * scale, 11 * scale, 7 * scale, 7 * scale), mid);
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 
 class _NavItem extends StatelessWidget {

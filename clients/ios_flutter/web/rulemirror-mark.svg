@@ -1,5 +1,3 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <rect width="512" height="512" fill="#315e51"/>
-  <path d="M142 128h92v44h-48v168h48v44h-92V128Zm228 0h-92v44h48v168h-48v44h92V128Z" fill="#d7f4ea"/>
-  <path d="M224 210h64v92h-64z" fill="#8cbcac"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1254 1254">
+  <image href="rulemirror-logo.png" width="1254" height="1254" preserveAspectRatio="xMidYMid meet"/>
 </svg>
