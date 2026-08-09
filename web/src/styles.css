@@ -372,6 +372,11 @@ h3 { margin-bottom: 7px; font-size: 17px; }
   .main-column { width: 100%; margin-left: 0; }
   .topbar { height: 66px; padding: 0 22px; }
   .menu-button { display: inline-grid; }
+  .breadcrumb { display: none; }
+  .topbar-actions { flex: 1; min-width: 0; gap: 7px; }
+  .account-search-wrap { flex: 1; min-width: 0; }
+  .account-search-wrap input { width: 100%; min-width: 0; }
+  .search-submit { display: none; }
   .content { padding: 32px 22px 60px; }
   .page-header { align-items: start; flex-direction: column; margin-bottom: 26px; }
   .page-header .button { width: 100%; }

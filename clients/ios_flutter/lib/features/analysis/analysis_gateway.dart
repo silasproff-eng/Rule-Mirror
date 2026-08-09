@@ -141,6 +141,7 @@ abstract class AnalysisGateway {
   Future<void> register(String email, String password);
   Future<void> login(String email, String password);
   Future<PortfolioSummary> portfolio();
+  Future<void> importPortfolio(Uint8List bytes, String filename);
   Future<List<TradeHistory>> trades();
   Future<void> deleteTrade(String tradeId);
   Future<AccountProfile> profile();
@@ -155,8 +156,10 @@ abstract class AnalysisGateway {
 }
 
 class HttpAnalysisGateway implements AnalysisGateway {
-  HttpAnalysisGateway({http.Client? client}) : client = client ?? http.Client();
+  HttpAnalysisGateway({http.Client? client, this.onAuthenticationExpired})
+      : client = client ?? http.Client();
   final http.Client client;
+  final void Function()? onAuthenticationExpired;
   String? accessToken;
   String? refreshToken;
   String? accountEmail;
@@ -176,6 +179,38 @@ class HttpAnalysisGateway implements AnalysisGateway {
   Uri _uri(String path) => Uri.parse('${AppConfig.apiBaseUrl}$path');
 
   Map<String, String> get _headers => {'Authorization': 'Bearer $accessToken'};
+
+  Future<http.Response> _authenticated(
+      Future<http.Response> Function(Map<String, String> headers)
+          request) async {
+    var response = await request(_headers);
+    if (response.statusCode != 401) return response;
+    final token = refreshToken;
+    if (token == null) {
+      _clearAuthentication(notify: true);
+      throw const GatewayError('authentication_required',
+          'Your session has ended. Please sign in again.');
+    }
+    try {
+      final refreshed = _decode(await client.post(_uri('/auth/refresh'),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({'refresh_token': token})));
+      accessToken = refreshed['access_token'] as String;
+      refreshToken = refreshed['refresh_token'] as String?;
+      response = await request(_headers);
+      if (response.statusCode != 401) return response;
+    } catch (_) {}
+    _clearAuthentication(notify: true);
+    throw const GatewayError('authentication_required',
+        'Your session has ended. Please sign in again.');
+  }
+
+  void _clearAuthentication({bool notify = false}) {
+    accessToken = null;
+    refreshToken = null;
+    accountEmail = null;
+    if (notify) onAuthenticationExpired?.call();
+  }
 
   Future<Map<String, dynamic>> _tokens(
       String path, String email, String password) async {
@@ -201,16 +236,29 @@ class HttpAnalysisGateway implements AnalysisGateway {
 
   @override
   Future<PortfolioSummary> portfolio() async => _normalize(() async {
-        final value =
-            _decode(await client.get(_uri('/portfolio'), headers: _headers));
+        final value = _decode(await _authenticated(
+            (headers) => client.get(_uri('/portfolio'), headers: headers)));
         return PortfolioSummary.fromJson(value);
       });
 
   @override
+  Future<void> importPortfolio(Uint8List bytes, String filename) async =>
+      _normalize(() async {
+        _decode(await _authenticated((headers) async {
+          final request =
+              http.MultipartRequest('POST', _uri('/portfolio/import'))
+                ..headers.addAll(headers)
+                ..files.add(http.MultipartFile.fromBytes('file', bytes,
+                    filename: filename));
+          return http.Response.fromStream(await client.send(request));
+        }));
+      });
+
+  @override
   Future<List<TradeHistory>> trades() async => _normalize(() async {
-        final decoded = jsonDecode(
-                (await client.get(_uri('/trades'), headers: _headers)).body)
-            as List<dynamic>;
+        final response = await _authenticated(
+            (headers) => client.get(_uri('/trades'), headers: headers));
+        final decoded = _decodeList(response);
         return decoded
             .map((item) => TradeHistory.fromJson(item as Map<String, dynamic>))
             .toList();
@@ -218,8 +266,8 @@ class HttpAnalysisGateway implements AnalysisGateway {
 
   @override
   Future<void> deleteTrade(String tradeId) async => _normalize(() async {
-        _decode(
-            await client.delete(_uri('/trades/$tradeId'), headers: _headers));
+        _decode(await _authenticated((headers) =>
+            client.delete(_uri('/trades/$tradeId'), headers: headers)));
       });
 
   @override
@@ -228,50 +276,55 @@ class HttpAnalysisGateway implements AnalysisGateway {
           throw const GatewayError(
               'auth_required', 'Sign in to load your profile.');
         }
-        final value = _decode(await client.get(
+        final value = _decode(await _authenticated((headers) => client.get(
             _uri('/accounts/${Uri.encodeComponent(accountEmail!)}'),
-            headers: _headers));
+            headers: headers)));
         return AccountProfile.fromJson(value);
       });
 
   @override
   Future<AccountProfile> updateProfile(String displayName) async =>
       _normalize(() async {
-        final response = await client.put(_uri('/account/profile'),
-            headers: {..._headers, 'Content-Type': 'application/json'},
-            body: jsonEncode({'display_name': displayName}));
+        final response = await _authenticated((headers) => client.put(
+            _uri('/account/profile'),
+            headers: {...headers, 'Content-Type': 'application/json'},
+            body: jsonEncode({'display_name': displayName})));
         return AccountProfile.fromJson(_decode(response));
       });
 
   Future<void> logout() async {
     if (refreshToken == null) return;
-    await client.post(_uri('/auth/logout'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'refresh_token': refreshToken}));
-    accessToken = null;
-    refreshToken = null;
+    try {
+      await _normalize(() async {
+        _decode(await client.post(_uri('/auth/logout'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({'refresh_token': refreshToken})));
+      });
+    } finally {
+      _clearAuthentication();
+    }
   }
 
   Future<void> deleteAccount() async {
-    _decode(await client.delete(_uri('/account'), headers: _headers));
-    accessToken = null;
-    refreshToken = null;
+    await _normalize(() async => _decode(await _authenticated(
+        (headers) => client.delete(_uri('/account'), headers: headers))));
+    _clearAuthentication();
   }
 
   @override
   Future<void> setPublicProfile(bool enabled) async => _normalize(() async {
-        _decode(await client.put(
+        _decode(await _authenticated((headers) => client.put(
             _uri('/account/public-profile?enabled=$enabled'),
-            headers: _headers));
+            headers: headers)));
       });
 
   @override
   Future<List<AccountProfile>> searchAccounts(String query) async =>
       _normalize(() async {
-        final decoded = jsonDecode((await client.get(
-                _uri('/accounts/search?q=${Uri.encodeQueryComponent(query)}'),
-                headers: _headers))
-            .body) as List<dynamic>;
+        final response = await _authenticated((headers) => client.get(
+            _uri('/accounts/search?q=${Uri.encodeQueryComponent(query)}'),
+            headers: headers));
+        final decoded = _decodeList(response);
         return decoded
             .map(
                 (item) => AccountProfile.fromJson(item as Map<String, dynamic>))
@@ -281,12 +334,13 @@ class HttpAnalysisGateway implements AnalysisGateway {
   @override
   Future<ImportPreview> preview(Uint8List bytes, String filename) async {
     return _normalize(() async {
-      final request = http.MultipartRequest('POST', _uri('/imports/preview'))
-        ..headers.addAll(_headers)
-        ..files.add(
-            http.MultipartFile.fromBytes('file', bytes, filename: filename));
-      final response =
-          await http.Response.fromStream(await client.send(request));
+      final response = await _authenticated((headers) async {
+        final request = http.MultipartRequest('POST', _uri('/imports/preview'))
+          ..headers.addAll(headers)
+          ..files.add(
+              http.MultipartFile.fromBytes('file', bytes, filename: filename));
+        return http.Response.fromStream(await client.send(request));
+      });
       final value = _decode(response);
       return ImportPreview(
           List<String>.from(value['headers'] as List),
@@ -299,14 +353,15 @@ class HttpAnalysisGateway implements AnalysisGateway {
   Future<List<AffectedTrade>> importExecutions(Uint8List bytes, String filename,
       Map<String, String> mapping, String timezone) async {
     return _normalize(() async {
-      final request = http.MultipartRequest('POST', _uri('/imports'))
-        ..headers.addAll(_headers)
-        ..fields['mapping'] = jsonEncode(mapping)
-        ..fields['timezone'] = timezone
-        ..files.add(
-            http.MultipartFile.fromBytes('file', bytes, filename: filename));
-      final imported =
-          _decode(await http.Response.fromStream(await client.send(request)));
+      final imported = _decode(await _authenticated((headers) async {
+        final request = http.MultipartRequest('POST', _uri('/imports'))
+          ..headers.addAll(headers)
+          ..fields['mapping'] = jsonEncode(mapping)
+          ..fields['timezone'] = timezone
+          ..files.add(
+              http.MultipartFile.fromBytes('file', bytes, filename: filename));
+        return http.Response.fromStream(await client.send(request));
+      }));
       final affected = imported['affected_trades'] as List<dynamic>;
       if (affected.isEmpty) {
         throw const GatewayError(
@@ -353,13 +408,14 @@ class HttpAnalysisGateway implements AnalysisGateway {
     if (retryOfRunId != null) {
       requestBody['retry_of_run_id'] = retryOfRunId;
     }
-    final runResponse = await client.post(_uri('/analysis-runs'),
-        headers: {..._headers, 'Content-Type': 'application/json'},
-        body: jsonEncode(requestBody));
+    final runResponse = await _authenticated((headers) => client.post(
+        _uri('/analysis-runs'),
+        headers: {...headers, 'Content-Type': 'application/json'},
+        body: jsonEncode(requestBody)));
     final run = _decode(runResponse);
     for (var attempt = 0; attempt < 40; attempt += 1) {
-      final statusResponse = await client
-          .get(_uri('/analysis-runs/${run['id']}'), headers: _headers);
+      final statusResponse = await _authenticated((headers) =>
+          client.get(_uri('/analysis-runs/${run['id']}'), headers: headers));
       final status = _decode(statusResponse);
       if (status['status'] == 'failed') {
         lastFailedRunId = run['id'] as String;
@@ -370,9 +426,9 @@ class HttpAnalysisGateway implements AnalysisGateway {
       }
       if (status['status'] == 'completed') {
         lastFailedRunId = null;
-        final resultResponse = await client.get(
+        final resultResponse = await _authenticated((headers) => client.get(
             _uri('/trade-analyses/${status['trade_analysis_id']}'),
-            headers: _headers);
+            headers: headers));
         return AnalysisResult.fromJson(_decode(resultResponse));
       }
       await Future<void>.delayed(const Duration(milliseconds: 250));
@@ -422,6 +478,18 @@ class HttpAnalysisGateway implements AnalysisGateway {
             detail['message'] as String? ?? 'The request failed.');
       }
       throw const GatewayError('request_failed', 'The request failed.');
+    }
+    return value;
+  }
+
+  List<dynamic> _decodeList(http.Response response) {
+    if (response.statusCode >= 400) {
+      _decode(response);
+    }
+    final value = jsonDecode(response.body.isEmpty ? '[]' : response.body);
+    if (value is! List<dynamic>) {
+      throw const GatewayError(
+          'invalid_response', 'The service returned an unexpected response.');
     }
     return value;
   }

@@ -28,12 +28,14 @@ class AnalysisScreen extends StatefulWidget {
       this.gateway,
       this.fileSelector,
       this.authenticated = false,
+      this.onSearch,
       this.onAuthenticated,
       super.key});
   final VoidCallback onThemeChanged;
   final AnalysisGateway? gateway;
   final Future<SelectedFile?> Function()? fileSelector;
   final bool authenticated;
+  final VoidCallback? onSearch;
   final VoidCallback? onAuthenticated;
 
   @override
@@ -59,27 +61,35 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
     stage = widget.authenticated ? FlowStage.upload : FlowStage.auth;
   }
 
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    precacheImage(const AssetImage('assets/rulemirror-mark.png'), context);
+  }
+
   Future<void> _preflight() async {
     try {
       await gateway.healthCheck();
-      if (mounted)
+      if (mounted) {
         setState(() =>
             stage = widget.authenticated ? FlowStage.upload : FlowStage.auth);
+      }
     } on GatewayError catch (error) {
-      if (mounted)
+      if (mounted) {
         setState(() {
           errorTitle = 'Server unavailable';
           errorDetail = error.message;
           errorRecovery = ErrorRecovery.server;
           stage = FlowStage.error;
         });
+      }
     }
   }
 
   @override
   Widget build(BuildContext context) {
     final wide = MediaQuery.sizeOf(context).width >= 900;
-    if (stage == FlowStage.starting)
+    if (stage == FlowStage.starting) {
       return Scaffold(
           body: DecoratedBox(
               decoration: const BoxDecoration(
@@ -97,6 +107,7 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
                           title: 'Connecting to RuleMirror',
                           detail: 'Preparing your private workspace.',
                           progress: 0.12)))));
+    }
     return Scaffold(
       body: SafeArea(
         child: Row(
@@ -106,7 +117,9 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
               child: Column(
                 children: [
                   _TopBar(
-                      onThemeChanged: widget.onThemeChanged, showBrand: !wide),
+                      onThemeChanged: widget.onThemeChanged,
+                      onSearch: widget.onSearch,
+                      showBrand: !wide),
                   Expanded(
                     child: SingleChildScrollView(
                       padding: EdgeInsets.symmetric(
@@ -528,9 +541,11 @@ class _Sidebar extends StatelessWidget {
 }
 
 class _TopBar extends StatelessWidget {
-  const _TopBar({required this.onThemeChanged, required this.showBrand});
+  const _TopBar(
+      {required this.onThemeChanged, required this.showBrand, this.onSearch});
   final VoidCallback onThemeChanged;
   final bool showBrand;
+  final VoidCallback? onSearch;
 
   @override
   Widget build(BuildContext context) {
@@ -543,6 +558,11 @@ class _TopBar extends StatelessWidget {
       child: Row(children: [
         if (showBrand) const _Brand(),
         const Spacer(),
+        if (onSearch != null)
+          IconButton(
+              onPressed: onSearch,
+              icon: const Icon(Icons.search_rounded),
+              tooltip: 'Search accounts'),
         if (showBrand)
           IconButton(
               onPressed: onThemeChanged,
@@ -565,11 +585,22 @@ class _Brand extends StatelessWidget {
   Widget build(BuildContext context) {
     return Semantics(
         label: '${AppConfig.displayName} home',
-        child: SizedBox(
-            width: 126,
-            height: 50,
-            child: Image.asset('assets/rulemirror-logo.png',
-                fit: BoxFit.contain)));
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          Container(
+              width: 46,
+              height: 34,
+              decoration: BoxDecoration(
+                  color: Colors.white, borderRadius: BorderRadius.circular(8)),
+              clipBehavior: Clip.antiAlias,
+              child:
+                  Image.asset('assets/rulemirror-mark.png', fit: BoxFit.cover)),
+          const SizedBox(width: 8),
+          Text('RuleMirror',
+              style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: -0.25,
+                  color: Theme.of(context).colorScheme.onSurface))
+        ]));
   }
 }
 

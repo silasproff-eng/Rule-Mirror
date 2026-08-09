@@ -7,6 +7,52 @@ import 'package:http/testing.dart';
 import 'package:strategy_audit_app/features/analysis/analysis_gateway.dart';
 
 void main() {
+  test('refreshes once after an expired access token and retries trades',
+      () async {
+    var tradeRequests = 0;
+    final gateway = HttpAnalysisGateway(client: MockClient((request) async {
+      if (request.url.path.endsWith('/auth/refresh')) {
+        return http.Response(
+            jsonEncode(
+                {'access_token': 'new-access', 'refresh_token': 'new-refresh'}),
+            200);
+      }
+      if (request.url.path.endsWith('/trades')) {
+        tradeRequests += 1;
+        return tradeRequests == 1
+            ? http.Response(
+                jsonEncode({
+                  'detail': {'code': 'expired', 'message': 'expired'}
+                }),
+                401)
+            : http.Response('[]', 200);
+      }
+      return http.Response('{}', 404);
+    }))
+      ..accessToken = 'old-access'
+      ..refreshToken = 'refresh';
+    expect(await gateway.trades(), isEmpty);
+    expect(gateway.accessToken, 'new-access');
+    expect(tradeRequests, 2);
+  });
+
+  test('clears authentication when refresh fails', () async {
+    final gateway = HttpAnalysisGateway(
+        client: MockClient((request) async => http.Response(
+            jsonEncode({
+              'detail': {'code': 'invalid_refresh_token', 'message': 'invalid'}
+            }),
+            401)))
+      ..accessToken = 'old-access'
+      ..refreshToken = 'bad-refresh';
+    await expectLater(
+        gateway.trades(),
+        throwsA(isA<GatewayError>()
+            .having((value) => value.code, 'code', 'authentication_required')));
+    expect(gateway.accessToken, isNull);
+    expect(gateway.refreshToken, isNull);
+  });
+
   test('real HTTP adapter maps import through completed analysis', () async {
     final client = MockClient((request) async {
       if (request.url.path.endsWith('/imports')) {

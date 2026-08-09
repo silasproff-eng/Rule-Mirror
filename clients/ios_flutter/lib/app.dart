@@ -1,3 +1,6 @@
+import 'dart:typed_data';
+
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
 import 'core/app_config.dart';
@@ -85,46 +88,25 @@ class _LaunchShellState extends State<_LaunchShell>
   int tab = 2;
   bool ready = false;
   late final PageController pages = PageController(initialPage: tab);
-  final HttpAnalysisGateway gateway = HttpAnalysisGateway();
+  late final HttpAnalysisGateway gateway;
   final TextEditingController topSearch = TextEditingController();
   bool signedIn = false;
+
+  void _resetToSignIn() {
+    if (pages.hasClients) pages.jumpToPage(2);
+    setState(() {
+      signedIn = false;
+      tab = 2;
+    });
+  }
 
   @override
   void initState() {
     super.initState();
+    gateway = HttpAnalysisGateway(onAuthenticationExpired: _resetToSignIn);
     Future<void>.delayed(const Duration(milliseconds: 700), () {
       if (mounted) setState(() => ready = true);
     });
-  }
-
-  void _showSearchResults(String query) {
-    if (query.length < 2 || !signedIn) return;
-    showModalBottomSheet<void>(
-        context: context,
-        showDragHandle: true,
-        builder: (context) => FutureBuilder<List<AccountProfile>>(
-            future: gateway.searchAccounts(query),
-            builder: (context, snapshot) {
-              if (snapshot.connectionState != ConnectionState.done) {
-                return const SizedBox(
-                    height: 220,
-                    child: Center(child: CircularProgressIndicator()));
-              }
-              if (snapshot.hasError || snapshot.data!.isEmpty) {
-                return const SizedBox(
-                    height: 220,
-                    child: Center(child: Text('No public accounts found.')));
-              }
-              return ListView(
-                  shrinkWrap: true,
-                  children: snapshot.data!
-                      .map((account) => ListTile(
-                          title: Text(account.displayName ?? account.username),
-                          subtitle: Text(account.username),
-                          trailing: Text(
-                              account.publicProfile ? 'Public' : 'Private')))
-                      .toList());
-            }));
   }
 
   @override
@@ -141,17 +123,12 @@ class _LaunchShellState extends State<_LaunchShell>
       return const _SplashScreen();
     }
     return Scaffold(
-      appBar: AppBar(
-          centerTitle: true,
-          title: IconButton(
-              onPressed: () => showSearch<String>(
-                  context: context,
-                  delegate: _AccountSearchDelegate(
-                      gateway: gateway, signedIn: signedIn)),
-              style: IconButton.styleFrom(
-                  backgroundColor: Theme.of(context).colorScheme.primary,
-                  foregroundColor: Theme.of(context).colorScheme.onPrimary),
-              icon: const Icon(Icons.search))),
+      appBar: tab == 2
+          ? null
+          : AppBar(
+              centerTitle: true,
+              title:
+                  _AccountSearchButton(gateway: gateway, signedIn: signedIn)),
       body: FadeTransition(
           opacity: CurvedAnimation(parent: animation, curve: Curves.easeOut),
           child: PageView(
@@ -163,19 +140,30 @@ class _LaunchShellState extends State<_LaunchShell>
                     key: ValueKey('portfolio-$signedIn'),
                     authenticated: signedIn,
                     title: 'My portfolio',
-                    load: gateway.portfolio),
+                    load: gateway.portfolio,
+                    importPortfolio: gateway.importPortfolio),
                 AnalysisScreen(
+                    key: ValueKey('analysis-$signedIn'),
                     onThemeChanged: widget.onThemeChanged,
                     gateway: gateway,
                     authenticated: signedIn,
+                    onSearch: () => showSearch<String>(
+                        context: context,
+                        delegate: _AccountSearchDelegate(
+                            gateway: gateway, signedIn: signedIn)),
                     onAuthenticated: () => setState(() => signedIn = true)),
                 _DataTab(
                     key: ValueKey('trades-$signedIn'),
                     authenticated: signedIn,
                     title: 'Trades',
-                    load: gateway.trades),
+                    load: gateway.trades,
+                    deleteTrade: gateway.deleteTrade),
                 _SearchTab(
-                    gateway: gateway, onThemeChanged: widget.onThemeChanged),
+                    key: ValueKey('profile-$signedIn'),
+                    authenticated: signedIn,
+                    gateway: gateway,
+                    onThemeChanged: widget.onThemeChanged,
+                    onSignedOut: _resetToSignIn),
               ])),
       bottomNavigationBar: NavigationBar(
           selectedIndex: tab,
@@ -205,6 +193,34 @@ class _LaunchShellState extends State<_LaunchShell>
                 label: 'Profile'),
           ]),
     );
+  }
+}
+
+class _AccountSearchButton extends StatelessWidget {
+  const _AccountSearchButton({required this.gateway, required this.signedIn});
+  final HttpAnalysisGateway gateway;
+  final bool signedIn;
+
+  @override
+  Widget build(BuildContext context) {
+    return ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 330),
+        child: Material(
+            color: Theme.of(context).colorScheme.surfaceContainerLowest,
+            borderRadius: BorderRadius.circular(999),
+            child: InkWell(
+                borderRadius: BorderRadius.circular(999),
+                onTap: () => showSearch<String>(
+                    context: context,
+                    delegate: _AccountSearchDelegate(
+                        gateway: gateway, signedIn: signedIn)),
+                child: const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                    child: Row(mainAxisSize: MainAxisSize.min, children: [
+                      Icon(Icons.search, size: 19),
+                      SizedBox(width: 9),
+                      Text('Search accounts')
+                    ])))));
   }
 }
 
@@ -273,6 +289,8 @@ class _AccountSearchDelegate extends SearchDelegate<String> {
           return ListView(
               children: snapshot.data!
                   .map((account) => ListTile(
+                      onTap: () => _showPublicProfile(context, account),
+                      leading: const CircleAvatar(child: Icon(Icons.person)),
                       title: Text(account.displayName ?? account.username),
                       subtitle: Text(account.username),
                       trailing:
@@ -329,19 +347,31 @@ class _DataTab extends StatefulWidget {
       {super.key,
       required this.authenticated,
       required this.title,
-      required this.load});
+      required this.load,
+      this.deleteTrade,
+      this.importPortfolio});
   final bool authenticated;
   final String title;
   final Future<Object> Function() load;
+  final Future<void> Function(String tradeId)? deleteTrade;
+  final Future<void> Function(Uint8List bytes, String filename)?
+      importPortfolio;
 
   @override
   State<_DataTab> createState() => _DataTabState();
 }
 
 class _SearchTab extends StatefulWidget {
-  const _SearchTab({required this.gateway, required this.onThemeChanged});
+  const _SearchTab(
+      {super.key,
+      required this.authenticated,
+      required this.gateway,
+      required this.onThemeChanged,
+      required this.onSignedOut});
+  final bool authenticated;
   final HttpAnalysisGateway gateway;
   final VoidCallback onThemeChanged;
+  final VoidCallback onSignedOut;
 
   @override
   State<_SearchTab> createState() => _SearchTabState();
@@ -350,9 +380,71 @@ class _SearchTab extends StatefulWidget {
 class _SearchTabState extends State<_SearchTab> {
   final query = TextEditingController();
   final name = TextEditingController();
-  String timezone = 'America/New_York';
   bool publicProfile = false;
   Future<List<AccountProfile>>? results;
+  AccountProfile? profile;
+  bool loadingProfile = false;
+  bool saving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.authenticated) _loadProfile();
+  }
+
+  Future<void> _loadProfile() async {
+    setState(() => loadingProfile = true);
+    try {
+      final value = await widget.gateway.profile();
+      if (!mounted) return;
+      name.text = value.displayName ?? '';
+      setState(() {
+        profile = value;
+        publicProfile = value.publicProfile;
+      });
+    } on GatewayError catch (error) {
+      if (mounted) _message(error.message);
+    } finally {
+      if (mounted) setState(() => loadingProfile = false);
+    }
+  }
+
+  void _message(String text) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
+  }
+
+  Future<void> _saveProfile() async {
+    if (saving) return;
+    setState(() => saving = true);
+    try {
+      final value = await widget.gateway.updateProfile(name.text.trim());
+      if (!mounted) return;
+      setState(() => profile = value);
+      _message('Profile saved.');
+    } on GatewayError catch (error) {
+      if (mounted) _message(error.message);
+    } finally {
+      if (mounted) setState(() => saving = false);
+    }
+  }
+
+  Future<void> _setPublicProfile(bool value) async {
+    try {
+      await widget.gateway.setPublicProfile(value);
+      if (mounted) setState(() => publicProfile = value);
+    } on GatewayError catch (error) {
+      if (mounted) _message(error.message);
+    }
+  }
+
+  void _search() {
+    final value = query.text.trim();
+    if (value.length < 2) {
+      _message('Enter at least two characters to search.');
+      return;
+    }
+    setState(() => results = widget.gateway.searchAccounts(value));
+  }
 
   @override
   void dispose() {
@@ -374,54 +466,84 @@ class _SearchTabState extends State<_SearchTab> {
       const Text(
           'Search public accounts by email and manage your workspace preferences.'),
       const SizedBox(height: 24),
-      TextField(
-          controller: name,
-          decoration: const InputDecoration(
-              labelText: 'Display name',
-              prefixIcon: Icon(Icons.badge_outlined))),
-      const SizedBox(height: 12),
-      DropdownButtonFormField<String>(
-          value: timezone,
-          decoration: const InputDecoration(labelText: 'Timezone'),
-          items: const [
-            DropdownMenuItem(
-                value: 'America/New_York', child: Text('America/New_York')),
-            DropdownMenuItem(
-                value: 'America/Chicago', child: Text('America/Chicago')),
-            DropdownMenuItem(
-                value: 'America/Los_Angeles',
-                child: Text('America/Los_Angeles')),
-            DropdownMenuItem(value: 'UTC', child: Text('UTC'))
-          ],
-          onChanged: (value) {
-            if (value != null) setState(() => timezone = value);
-          }),
-      const SizedBox(height: 12),
-      FilledButton.icon(
-          onPressed: () async {
-            await widget.gateway.updateProfile(name.text.trim());
-            if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Profile saved.')));
-            }
-          },
-          icon: const Icon(Icons.save_outlined),
-          label: const Text('Save profile')),
-      SwitchListTile.adaptive(
-          title: const Text('Public profile'),
-          subtitle: Text(publicProfile
-              ? 'Summary metrics are visible in account search.'
-              : 'Private by default.'),
-          value: publicProfile,
-          onChanged: (value) async {
-            await widget.gateway.setPublicProfile(value);
-            if (mounted) setState(() => publicProfile = value);
-          }),
+      if (!widget.authenticated)
+        const Card(
+            child: Padding(
+                padding: EdgeInsets.all(20),
+                child: Text(
+                    'Sign in from Analyze to manage your profile, search accounts, and view synced data.')))
+      else ...[
+        if (loadingProfile)
+          const Padding(
+              padding: EdgeInsets.all(16),
+              child: Center(child: CircularProgressIndicator()))
+        else ...[
+          Card(
+              child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(children: [
+                    Row(children: [
+                      const CircleAvatar(child: Icon(Icons.person_outline)),
+                      const SizedBox(width: 12),
+                      Expanded(
+                          child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                            Text(profile?.displayName ?? 'Your workspace',
+                                style: Theme.of(context)
+                                    .textTheme
+                                    .titleMedium
+                                    ?.copyWith(fontWeight: FontWeight.w700)),
+                            Text(widget.gateway.accountEmail ?? '',
+                                style: Theme.of(context).textTheme.bodySmall)
+                          ]))
+                    ]),
+                    const SizedBox(height: 16),
+                    Row(children: [
+                      _ProfileMetric(
+                          label: 'P/L',
+                          value: _money(profile?.metrics['total_pnl'])),
+                      _ProfileMetric(
+                          label: 'Win rate',
+                          value: _percent(profile?.metrics['win_rate'])),
+                      _ProfileMetric(
+                          label: 'Discipline',
+                          value: _score(profile?.metrics['discipline']))
+                    ])
+                  ]))),
+          const SizedBox(height: 12),
+          TextField(
+              controller: name,
+              textInputAction: TextInputAction.done,
+              onSubmitted: (_) => _saveProfile(),
+              decoration: const InputDecoration(
+                  labelText: 'Display name',
+                  prefixIcon: Icon(Icons.badge_outlined))),
+          const SizedBox(height: 12),
+          FilledButton.icon(
+              onPressed: saving ? null : _saveProfile,
+              icon: const Icon(Icons.save_outlined),
+              label: Text(saving ? 'Saving…' : 'Save profile')),
+          SwitchListTile.adaptive(
+              title: const Text('Public profile'),
+              subtitle: Text(publicProfile
+                  ? 'Summary metrics are visible in account search.'
+                  : 'Private by default.'),
+              value: publicProfile,
+              onChanged: _setPublicProfile),
+          ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.dns_outlined),
+              title: const Text('Connected server'),
+              subtitle: Text(Uri.parse(AppConfig.apiBaseUrl).host))
+        ]
+      ],
+      const SizedBox(height: 18),
       TextField(
           controller: query,
+          enabled: widget.authenticated,
           textInputAction: TextInputAction.search,
-          onSubmitted: (value) => setState(
-              () => results = widget.gateway.searchAccounts(value.trim())),
+          onSubmitted: (_) => _search(),
           decoration: InputDecoration(
               labelText: 'Search accounts by email',
               prefixIcon: const Icon(Icons.search),
@@ -434,8 +556,7 @@ class _SearchTabState extends State<_SearchTab> {
                           foregroundColor:
                               Theme.of(context).colorScheme.onPrimary,
                           shape: const CircleBorder()),
-                      onPressed: () => setState(() => results =
-                          widget.gateway.searchAccounts(query.text.trim())),
+                      onPressed: widget.authenticated ? _search : null,
                       icon: const Icon(Icons.search, size: 18))))),
       const SizedBox(height: 16),
       if (results != null)
@@ -451,6 +572,7 @@ class _SearchTabState extends State<_SearchTab> {
               return Column(
                   children: snapshot.data!
                       .map((account) => ListTile(
+                          onTap: () => _showPublicProfile(context, account),
                           leading:
                               const CircleAvatar(child: Icon(Icons.person)),
                           title: Text(account.displayName ?? account.username),
@@ -465,33 +587,48 @@ class _SearchTabState extends State<_SearchTab> {
           icon: const Icon(Icons.brightness_6_outlined),
           label: const Text('Toggle appearance')),
       OutlinedButton.icon(
-          onPressed: () async {
-            await widget.gateway.logout();
-            if (mounted) {
-              ScaffoldMessenger.of(context)
-                  .showSnackBar(const SnackBar(content: Text('Signed out.')));
-            }
-          },
+          onPressed: !widget.authenticated
+              ? null
+              : () async {
+                  try {
+                    await widget.gateway.logout();
+                  } on GatewayError catch (error) {
+                    if (mounted) _message(error.message);
+                  } finally {
+                    widget.onSignedOut();
+                  }
+                },
           icon: const Icon(Icons.logout),
           label: const Text('Sign out')),
       TextButton(
-          onPressed: () async {
-            final confirm = await showDialog<bool>(
-                context: context,
-                builder: (context) => AlertDialog(
-                        title: const Text('Delete account?'),
-                        content: const Text(
-                            'This removes your imports, trades, analyses, and sessions.'),
-                        actions: [
-                          TextButton(
-                              onPressed: () => Navigator.pop(context, false),
-                              child: const Text('Cancel')),
-                          FilledButton(
-                              onPressed: () => Navigator.pop(context, true),
-                              child: const Text('Delete'))
-                        ]));
-            if (confirm == true) await widget.gateway.deleteAccount();
-          },
+          onPressed: !widget.authenticated
+              ? null
+              : () async {
+                  final confirm = await showDialog<bool>(
+                      context: context,
+                      builder: (context) => AlertDialog(
+                              title: const Text('Delete account?'),
+                              content: const Text(
+                                  'This removes your imports, trades, analyses, and sessions.'),
+                              actions: [
+                                TextButton(
+                                    onPressed: () =>
+                                        Navigator.pop(context, false),
+                                    child: const Text('Cancel')),
+                                FilledButton(
+                                    onPressed: () =>
+                                        Navigator.pop(context, true),
+                                    child: const Text('Delete'))
+                              ]));
+                  if (confirm == true) {
+                    try {
+                      await widget.gateway.deleteAccount();
+                      widget.onSignedOut();
+                    } on GatewayError catch (error) {
+                      if (mounted) _message(error.message);
+                    }
+                  }
+                },
           child: const Text('Delete account')),
       const SizedBox(height: 12),
       Row(children: [
@@ -520,6 +657,74 @@ class _SearchTabState extends State<_SearchTab> {
   }
 }
 
+class _ProfileMetric extends StatelessWidget {
+  const _ProfileMetric({required this.label, required this.value});
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) => Expanded(
+          child:
+              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(label, style: Theme.of(context).textTheme.labelSmall),
+        const SizedBox(height: 3),
+        Text(value,
+            style: Theme.of(context)
+                .textTheme
+                .titleSmall
+                ?.copyWith(fontWeight: FontWeight.w700))
+      ]));
+}
+
+String _money(dynamic value) {
+  if (value is! num) return '—';
+  return '${value >= 0 ? '+' : '-'}\$${value.abs().toStringAsFixed(2)}';
+}
+
+String _percent(dynamic value) {
+  if (value is! num) return '—';
+  return '${value.toStringAsFixed(1)}%';
+}
+
+String _score(dynamic value) {
+  if (value is! num) return '—';
+  return '${value.round()}/100';
+}
+
+Future<void> _showPublicProfile(
+    BuildContext context, AccountProfile account) async {
+  await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) => SafeArea(
+          child: Padding(
+              padding: const EdgeInsets.fromLTRB(24, 6, 24, 30),
+              child: Column(mainAxisSize: MainAxisSize.min, children: [
+                const CircleAvatar(radius: 28, child: Icon(Icons.person)),
+                const SizedBox(height: 12),
+                Text(account.displayName ?? account.username,
+                    style: Theme.of(context)
+                        .textTheme
+                        .titleLarge
+                        ?.copyWith(fontWeight: FontWeight.w700)),
+                const SizedBox(height: 4),
+                Text(account.username,
+                    style: Theme.of(context).textTheme.bodyMedium),
+                const SizedBox(height: 22),
+                Row(children: [
+                  _ProfileMetric(
+                      label: 'P/L',
+                      value: _money(account.metrics['total_pnl'])),
+                  _ProfileMetric(
+                      label: 'Win rate',
+                      value: _percent(account.metrics['win_rate'])),
+                  _ProfileMetric(
+                      label: 'Discipline',
+                      value: _score(account.metrics['discipline']))
+                ])
+              ]))));
+}
+
 class _LegalPage extends StatelessWidget {
   const _LegalPage({required this.title, required this.sections});
   final String title;
@@ -540,6 +745,69 @@ class _LegalPage extends StatelessWidget {
 
 class _DataTabState extends State<_DataTab> {
   Future<Object>? request;
+  bool importingPortfolio = false;
+
+  Future<void> _refresh() async {
+    final next = widget.load();
+    setState(() => request = next);
+    await next;
+  }
+
+  Future<void> _importPortfolio() async {
+    if (widget.importPortfolio == null || importingPortfolio) return;
+    final picked = await FilePicker.platform.pickFiles(
+        type: FileType.custom, allowedExtensions: ['csv'], withData: true);
+    final file = picked?.files.single;
+    if (file == null || file.bytes == null) return;
+    setState(() => importingPortfolio = true);
+    try {
+      await widget.importPortfolio!(file.bytes!, file.name);
+      if (!mounted) return;
+      await _refresh();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Portfolio imported and synced.')));
+      }
+    } on GatewayError catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(error.message)));
+      }
+    } finally {
+      if (mounted) setState(() => importingPortfolio = false);
+    }
+  }
+
+  Future<void> _deleteTrade(TradeHistory trade) async {
+    final confirm = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+                title: const Text('Delete trade?'),
+                content: Text('Remove ${trade.symbol} from your history?'),
+                actions: [
+                  TextButton(
+                      onPressed: () => Navigator.pop(dialogContext, false),
+                      child: const Text('Cancel')),
+                  FilledButton(
+                      onPressed: () => Navigator.pop(dialogContext, true),
+                      child: const Text('Delete'))
+                ]));
+    if (confirm != true || widget.deleteTrade == null) return;
+    try {
+      await widget.deleteTrade!(trade.tradeId);
+      if (!mounted) return;
+      await _refresh();
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('Trade deleted.')));
+      }
+    } on GatewayError catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(error.message)));
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -559,52 +827,85 @@ class _DataTabState extends State<_DataTab> {
               if (snapshot.hasError) {
                 return _InfoTab(
                     title: widget.title,
-                    detail:
-                        'Sign in to load your Rule Mirror data, then pull to refresh.',
-                    onRetry: () => setState(() => request = widget.load()));
+                    detail: 'Your data could not be loaded right now.',
+                    onRetry: () => _refresh());
               }
               final value = snapshot.data;
               if (value is PortfolioSummary) {
-                return ListView(padding: const EdgeInsets.all(24), children: [
-                  Text(widget.title,
-                      style: Theme.of(context)
-                          .textTheme
-                          .headlineMedium
-                          ?.copyWith(fontWeight: FontWeight.w700)),
-                  const SizedBox(height: 16),
-                  if (value.holdings.isEmpty)
-                    const Card(
-                        child: Padding(
-                            padding: EdgeInsets.all(24),
-                            child: Text(
-                                'No holdings yet. Import a portfolio CSV from the Rule Mirror website to sync this account.'))),
-                  ...value.holdings.map((holding) => Card(
-                      child: ListTile(
-                          title: Text(holding.symbol),
-                          subtitle: Text(
-                              '${holding.quantity} units · ${holding.source}'),
-                          trailing: Text(holding.marketValue == null
-                              ? '—'
-                              : '\$${holding.marketValue!.toStringAsFixed(2)}')))),
-                ]);
+                return RefreshIndicator(
+                    onRefresh: _refresh,
+                    child:
+                        ListView(padding: const EdgeInsets.all(24), children: [
+                      Text(widget.title,
+                          style: Theme.of(context)
+                              .textTheme
+                              .headlineMedium
+                              ?.copyWith(fontWeight: FontWeight.w700)),
+                      const SizedBox(height: 8),
+                      Text(value.portfolioValue == null
+                          ? 'Pull down to refresh your synced holdings.'
+                          : 'Portfolio value: \$${value.portfolioValue!.toStringAsFixed(2)}'),
+                      const SizedBox(height: 16),
+                      FilledButton.icon(
+                          onPressed:
+                              importingPortfolio ? null : _importPortfolio,
+                          icon: const Icon(Icons.upload_file_outlined),
+                          label: Text(importingPortfolio
+                              ? 'Importing…'
+                              : 'Import portfolio CSV')),
+                      const SizedBox(height: 16),
+                      if (value.holdings.isEmpty)
+                        const Card(
+                            child: Padding(
+                                padding: EdgeInsets.all(24),
+                                child: Text(
+                                    'No holdings yet. Import a portfolio or purchase-history CSV to sync this account.'))),
+                      ...value.holdings.map((holding) => Card(
+                          child: ListTile(
+                              title: Text(holding.symbol),
+                              subtitle: Text(
+                                  '${holding.quantity} units · ${holding.source}'),
+                              trailing: Text(holding.marketValue == null
+                                  ? '—'
+                                  : '\$${holding.marketValue!.toStringAsFixed(2)}')))),
+                    ]));
               }
               if (value is List<TradeHistory>) {
-                return ListView(padding: const EdgeInsets.all(24), children: [
-                  Text(widget.title,
-                      style: Theme.of(context)
-                          .textTheme
-                          .headlineMedium
-                          ?.copyWith(fontWeight: FontWeight.w700)),
-                  const SizedBox(height: 16),
-                  ...value.map((trade) => Card(
-                      child: ListTile(
-                          title: Text(trade.symbol),
-                          subtitle: Text(
-                              '${trade.direction} · ${trade.closedAt == null ? 'Open' : 'Closed'}'),
-                          trailing: Text(trade.realizedPnl == null
-                              ? '—'
-                              : '\$${trade.realizedPnl!.toStringAsFixed(2)}')))),
-                ]);
+                return RefreshIndicator(
+                    onRefresh: _refresh,
+                    child:
+                        ListView(padding: const EdgeInsets.all(24), children: [
+                      Text(widget.title,
+                          style: Theme.of(context)
+                              .textTheme
+                              .headlineMedium
+                              ?.copyWith(fontWeight: FontWeight.w700)),
+                      const SizedBox(height: 16),
+                      if (value.isEmpty)
+                        const Card(
+                            child: Padding(
+                                padding: EdgeInsets.all(24),
+                                child: Text(
+                                    'No reconstructed trades yet. Import an execution CSV from Analyze to start your history.'))),
+                      ...value.map((trade) => Card(
+                          child: ListTile(
+                              title: Text(trade.symbol),
+                              subtitle: Text(
+                                  '${trade.direction} · ${trade.closedAt == null ? 'Open' : 'Closed'}'),
+                              trailing: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Text(trade.realizedPnl == null
+                                        ? '—'
+                                        : '\$${trade.realizedPnl!.toStringAsFixed(2)}'),
+                                    IconButton(
+                                        tooltip: 'Delete trade',
+                                        onPressed: widget.deleteTrade == null
+                                            ? null
+                                            : () => _deleteTrade(trade),
+                                        icon: const Icon(Icons.delete_outline))
+                                  ])))),
+                    ]));
               }
               final detail = value is PortfolioSummary
                   ? '${value.holdings.length} holdings · ${value.portfolioValue == null ? 'No value yet' : '\$${value.portfolioValue!.toStringAsFixed(2)}'}'
@@ -612,22 +913,15 @@ class _DataTabState extends State<_DataTab> {
                       ? '${value.length} reconstructed trades'
                       : 'Data synced';
               return _InfoTab(
-                  title: widget.title,
-                  detail: detail,
-                  onRetry: () => setState(() => request = widget.load()));
+                  title: widget.title, detail: detail, onRetry: _refresh);
             }));
   }
 }
 
 class _InfoTab extends StatelessWidget {
-  const _InfoTab(
-      {required this.title,
-      required this.detail,
-      this.onThemeChanged,
-      this.onRetry});
+  const _InfoTab({required this.title, required this.detail, this.onRetry});
   final String title;
   final String detail;
-  final VoidCallback? onThemeChanged;
   final VoidCallback? onRetry;
 
   @override
@@ -653,13 +947,6 @@ class _InfoTab extends StatelessWidget {
                             icon: const Icon(Icons.refresh),
                             label: const Text('Refresh'))
                       ],
-                      if (onThemeChanged != null) ...[
-                        const SizedBox(height: 28),
-                        OutlinedButton.icon(
-                            onPressed: onThemeChanged,
-                            icon: const Icon(Icons.brightness_6_outlined),
-                            label: const Text('Toggle appearance'))
-                      ]
                     ]))));
   }
 }
