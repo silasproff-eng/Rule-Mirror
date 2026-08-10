@@ -126,6 +126,10 @@ class _LaunchShellState extends State<_LaunchShell>
       appBar: tab == 2
           ? null
           : AppBar(
+              leading: const Padding(
+                  padding: EdgeInsets.only(left: 12),
+                  child: RuleMirrorMascot(size: 34)),
+              leadingWidth: 54,
               centerTitle: true,
               title:
                   _AccountSearchButton(gateway: gateway, signedIn: signedIn)),

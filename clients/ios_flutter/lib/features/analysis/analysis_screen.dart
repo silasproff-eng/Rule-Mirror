@@ -510,6 +510,10 @@ class _Sidebar extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          const Align(
+              alignment: Alignment.centerLeft,
+              child: RuleMirrorMascot(size: 68)),
+          const SizedBox(height: 14),
           const _Brand(),
           const SizedBox(height: 34),
           _NavItem(
@@ -538,6 +542,68 @@ class _Sidebar extends StatelessWidget {
       ),
     );
   }
+}
+
+class RuleMirrorMascot extends StatelessWidget {
+  const RuleMirrorMascot({super.key, this.size = 34});
+  final double size;
+
+  @override
+  Widget build(BuildContext context) => SizedBox(
+      width: size,
+      height: size,
+      child: CustomPaint(
+          painter:
+              _RuleMirrorMascotPainter(Theme.of(context).colorScheme.primary)));
+}
+
+class _RuleMirrorMascotPainter extends CustomPainter {
+  const _RuleMirrorMascotPainter(this.green);
+  final Color green;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final center = Offset(size.width / 2, size.height / 2);
+    final body = Paint()..color = green;
+    final face = Paint()..color = Colors.white;
+    canvas.drawCircle(center, size.width * .42, body);
+    for (var x = -1; x <= 1; x += 1) {
+      for (var y = -1; y <= 1; y += 1) {
+        final point =
+            center + Offset(x * size.width * .25, y * size.height * .25);
+        canvas.drawCircle(point, size.width * .045,
+            Paint()..color = green.withValues(alpha: .45));
+      }
+    }
+    canvas.drawRRect(
+        RRect.fromRectAndRadius(
+            Rect.fromCenter(
+                center: center + Offset(-size.width * .12, -size.height * .04),
+                width: size.width * .08,
+                height: size.height * .18),
+            const Radius.circular(8)),
+        face);
+    canvas.drawRRect(
+        RRect.fromRectAndRadius(
+            Rect.fromCenter(
+                center: center + Offset(size.width * .12, -size.height * .04),
+                width: size.width * .08,
+                height: size.height * .12),
+            const Radius.circular(8)),
+        face);
+    canvas.drawRRect(
+        RRect.fromRectAndRadius(
+            Rect.fromCenter(
+                center: center + Offset(0, size.height * .16),
+                width: size.width * .20,
+                height: size.height * .045),
+            const Radius.circular(8)),
+        face);
+  }
+
+  @override
+  bool shouldRepaint(covariant _RuleMirrorMascotPainter oldDelegate) =>
+      oldDelegate.green != green;
 }
 
 class _TopBar extends StatelessWidget {

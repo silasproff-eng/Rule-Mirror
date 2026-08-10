@@ -198,6 +198,14 @@ function logo() {
   return '<img class="brand-logo" src="/rulemirror-logo.png" alt="RuleMirror">'
 }
 
+function mascotState() {
+  if (state.busy === 'preview' || state.busy === 'import' || state.busy === 'analyze') return 'thinking'
+  if (state.analysis?.score === null) return 'warning'
+  if (state.analysis) return 'success'
+  if (state.notice?.tone === 'error') return 'error'
+  return 'idle'
+}
+
 function authView() {
   const register = state.authMode === 'register'
   return `<main class="auth-layout"><section class="auth-story"><div class="brand-line">${logo()}</div><div class="story-content"><p class="eyebrow">A clearer record of your decisions</p><h1>Review the trade.<br><em>Keep the lesson.</em></h1><p class="story-copy">RuleMirror reconstructs your real executions against a consistent set of rules, so your process gets easier to see over time.</p><div class="story-note"><span class="note-dot"></span><span>Private by default. Built for reflection, not prediction.</span></div></div><div class="story-footer">Strategy adherence analytics · v0.1 foundation</div></section><section class="auth-panel"><div class="auth-card"><div class="mobile-brand">${logo()}</div><p class="eyebrow">${register ? 'Create your workspace' : 'Welcome back'}</p><h2>${register ? 'Start with your process.' : 'Sign in to continue.'}</h2><p class="muted">${register ? 'Your first review starts with one clean CSV export.' : 'Your data and notes stay tied to your account.'}</p><form id="auth-form" class="form-stack"><label>Email address<input name="email" type="email" autocomplete="email" required value="${escape(state.email)}" placeholder="you@example.com"></label><label>Password<input name="password" type="password" minlength="12" autocomplete="${register ? 'new-password' : 'current-password'}" required placeholder="At least 12 characters"></label>${register ? '<label class="check-line"><input name="terms" type="checkbox" required><span>I agree to the <a href="/terms.html" target="_blank">Terms</a> and <a href="/privacy.html" target="_blank">Privacy Policy</a>, and understand RuleMirror is analytics—not financial advice.</span></label>' : ''}<button class="button button-primary button-wide" type="submit" ${state.busy ? 'disabled' : ''}>${state.busy ? 'Working…' : register ? 'Create account' : 'Sign in'} ${icon('arrow')}</button></form><button class="text-button" id="auth-toggle" type="button">${register ? 'Already have an account? Sign in' : 'New here? Create an account'}</button><p class="form-footnote">By using RuleMirror, you agree to the <a href="/terms.html">Terms of Service</a> and <a href="/privacy.html">Privacy Policy</a>. No card required.</p></div></section></main>${noticeView()}`
@@ -337,6 +345,16 @@ function render() {
 }
 
 function bindEvents() {
+  const sidebarHead = mount.querySelector('.sidebar-head')
+  if (sidebarHead && !sidebarHead.querySelector('rule-mirror-mascot')) {
+    const mascot = document.createElement('rule-mirror-mascot')
+    mascot.setAttribute('aria-hidden', 'true')
+    mascot.setAttribute('size', '54')
+    mascot.setAttribute('theme', state.profile.theme === 'dark' ? 'dark' : 'light')
+    mascot.setAttribute('green', '#145c4a')
+    mascot.setAttribute('state', mascotState())
+    sidebarHead.prepend(mascot)
+  }
   mount.querySelectorAll<HTMLButtonElement>('[data-account-username]').forEach((button) => button.addEventListener('click', () => void openAccountProfile(button.dataset.accountUsername ?? '')))
   mount.querySelector<HTMLFormElement>('#account-search-form')?.addEventListener('submit', (event) => {
     event.preventDefault()
