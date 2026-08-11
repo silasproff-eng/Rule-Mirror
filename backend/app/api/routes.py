@@ -438,14 +438,20 @@ def trade_history(user_id: str = Depends(current_user_id), session: Session = De
     for analysis, revision_id in analyses:
         if current_revisions.get(analysis.trade_id) == revision_id:
             latest.setdefault(analysis.trade_id, analysis)
+    revision_ids = [trade.current_revision_id for trade in trades if trade.current_revision_id]
+    revisions = {value.id: value for value in session.scalars(select(TradeRevision).where(TradeRevision.id.in_(revision_ids))).all()} if revision_ids else {}
+    allocations = session.scalars(select(TradeRevisionAllocation).where(TradeRevisionAllocation.trade_revision_id.in_(revision_ids))).all() if revision_ids else []
+    allocations_by_revision: dict[str, list[TradeRevisionAllocation]] = {}
+    for allocation in allocations:
+        allocations_by_revision.setdefault(allocation.trade_revision_id, []).append(allocation)
+    execution_ids = [allocation.execution_id for allocation in allocations]
+    executions = {value.id: value for value in session.scalars(select(Execution).where(Execution.id.in_(execution_ids))).all()} if execution_ids else {}
     result = []
     for trade in trades:
-        revision = session.get(TradeRevision, trade.current_revision_id) if trade.current_revision_id else None
-        allocations = session.scalars(select(TradeRevisionAllocation).where(TradeRevisionAllocation.trade_revision_id == trade.current_revision_id)).all() if revision else []
-        execution_ids = [allocation.execution_id for allocation in allocations]
-        executions = {value.id: value for value in session.scalars(select(Execution).where(Execution.id.in_(execution_ids))).all()} if execution_ids else {}
+        revision = revisions.get(trade.current_revision_id) if trade.current_revision_id else None
+        trade_allocations = allocations_by_revision.get(trade.current_revision_id, []) if revision else []
         entry_value = exit_value = matched = fees = commission = Decimal("0")
-        for allocation in allocations:
+        for allocation in trade_allocations:
             execution = executions.get(allocation.execution_id)
             if not execution:
                 continue
