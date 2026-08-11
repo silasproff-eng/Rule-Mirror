@@ -149,7 +149,8 @@ def issue(error: ImportValidationError):
 def trade_metrics(session: Session, user_id: str) -> dict:
     trades = session.scalars(select(Trade).where(Trade.user_id == user_id, Trade.active.is_(True))).all()
     trade_ids = [trade.id for trade in trades]
-    analyses = session.scalars(select(TradeAnalysis).where(TradeAnalysis.trade_id.in_(trade_ids))).all() if trade_ids else []
+    current_revisions = {trade.id: trade.current_revision_id for trade in trades}
+    analyses = session.execute(select(TradeAnalysis, AnalysisRun.trade_revision_id).join(AnalysisRun, TradeAnalysis.run_id == AnalysisRun.id).where(TradeAnalysis.trade_id.in_(trade_ids))).all() if trade_ids else []
     closed = [trade for trade in trades if trade.closed_at]
     realized_values = []
     entry_notional = Decimal("0")
@@ -174,7 +175,7 @@ def trade_metrics(session: Session, user_id: str) -> dict:
         realized = (exit_value - entry_value) if trade.direction == "long" else (entry_value - exit_value)
         realized_values.append(realized - fees - commission)
     total_pnl = sum(realized_values, Decimal("0")) if realized_values else None
-    scores = [analysis.score for analysis in analyses if analysis.score is not None]
+    scores = [analysis.score for analysis, revision_id in analyses if analysis.score is not None and current_revisions.get(analysis.trade_id) == revision_id]
     holdings = session.scalars(select(PortfolioHolding).where(PortfolioHolding.user_id == user_id)).all()
     portfolio_values = [Decimal(value.market_value) for value in holdings if value.market_value is not None]
     portfolio_value = sum(portfolio_values, Decimal("0")) if portfolio_values else None
@@ -413,10 +414,12 @@ def import_history(user_id: str = Depends(current_user_id), session: Session = D
 def trade_history(user_id: str = Depends(current_user_id), session: Session = Depends(database)):
     trades = session.scalars(select(Trade).where(Trade.user_id == user_id, Trade.active.is_(True)).order_by(Trade.opened_at.desc()).limit(200)).all()
     trade_ids = [trade.id for trade in trades]
-    analyses = session.scalars(select(TradeAnalysis).where(TradeAnalysis.trade_id.in_(trade_ids)).order_by(TradeAnalysis.id.desc())).all() if trade_ids else []
+    analyses = session.execute(select(TradeAnalysis, AnalysisRun.trade_revision_id).join(AnalysisRun, TradeAnalysis.run_id == AnalysisRun.id).where(TradeAnalysis.trade_id.in_(trade_ids)).order_by(TradeAnalysis.id.desc())).all() if trade_ids else []
     latest: dict[str, TradeAnalysis] = {}
-    for analysis in analyses:
-        latest.setdefault(analysis.trade_id, analysis)
+    current_revisions = {trade.id: trade.current_revision_id for trade in trades}
+    for analysis, revision_id in analyses:
+        if current_revisions.get(analysis.trade_id) == revision_id:
+            latest.setdefault(analysis.trade_id, analysis)
     result = []
     for trade in trades:
         revision = session.get(TradeRevision, trade.current_revision_id) if trade.current_revision_id else None
