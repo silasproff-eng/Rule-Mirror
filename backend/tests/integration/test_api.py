@@ -1,5 +1,8 @@
 import json
 from pathlib import Path
+from datetime import UTC, datetime, timedelta
+
+import jwt
 
 from app.api.dependencies import database
 from app.db.base import Base, build_engine
@@ -14,6 +17,7 @@ from app.db.models import (
     TradeRevision,
 )
 from app.main import app
+from app.core.config import get_settings
 from fastapi.testclient import TestClient
 from sqlalchemy import event, func, select
 from sqlalchemy.orm import Session, sessionmaker
@@ -62,6 +66,20 @@ def register(client, email):
 
 def authorization(tokens):
     return {"Authorization": f"Bearer {tokens['access_token']}"}
+
+
+def test_protected_routes_use_structured_auth_errors(tmp_path):
+    client, _ = client_for(tmp_path)
+    for headers in ({}, {"Authorization": "Basic abc"}, {"Authorization": "Bearer malformed"}):
+        response = client.get("/api/v1/trades", headers=headers)
+        assert response.status_code == 401
+        assert response.json()["detail"] == {"code": "invalid_access_token", "message": "Authentication is required"}
+    expired = jwt.encode({"sub": "user", "typ": "access", "exp": datetime.now(UTC) - timedelta(minutes=1)}, get_settings().secret_key, algorithm="HS256")
+    response = client.get("/api/v1/trades", headers={"Authorization": f"Bearer {expired}"})
+    assert response.status_code == 401
+    assert response.json()["detail"]["code"] == "invalid_access_token"
+    tokens = register(client, "valid-token@example.com")
+    assert client.get("/api/v1/trades", headers=authorization(tokens)).status_code == 200
 
 
 def test_auth_refresh_revocation_preview_and_owner_scope(tmp_path):
