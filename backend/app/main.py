@@ -29,7 +29,7 @@ def create_app(web_dist: Path | None = None, environment: str | None = None) -> 
     active_environment = environment or settings.environment
     dist = web_dist or DEFAULT_WEB_DIST
     application = FastAPI(title=settings.app_display_name, docs_url="/docs" if active_environment == "development" else None)
-    application.add_middleware(CORSMiddleware, allow_origins=settings.allowed_origins, allow_credentials=True, allow_methods=["GET", "POST", "DELETE"], allow_headers=["Authorization", "Content-Type"])
+    application.add_middleware(CORSMiddleware, allow_origins=settings.allowed_origins, allow_credentials=True, allow_methods=["GET", "POST", "PUT", "DELETE"], allow_headers=["Authorization", "Content-Type"])
     application.include_router(router)
 
     @application.get("/health")

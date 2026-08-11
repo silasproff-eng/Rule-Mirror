@@ -21,6 +21,23 @@ from sqlalchemy.orm import Session, sessionmaker
 FIXTURE = Path(__file__).parents[1] / "fixtures" / "executions.csv"
 
 
+def test_cors_allows_profile_put_for_trusted_origin_and_rejects_untrusted():
+    client = TestClient(app)
+    headers = {
+        "Origin": "http://localhost:8000",
+        "Access-Control-Request-Method": "PUT",
+        "Access-Control-Request-Headers": "authorization,content-type",
+    }
+    allowed = client.options("/api/v1/account/profile", headers=headers)
+    assert allowed.status_code == 200
+    assert "PUT" in allowed.headers["access-control-allow-methods"]
+    rejected = client.options(
+        "/api/v1/account/profile",
+        headers={**headers, "Origin": "https://untrusted.example"},
+    )
+    assert rejected.status_code == 400
+
+
 def client_for(tmp_path):
     engine = build_engine(f"sqlite:///{tmp_path}/api.db")
     Base.metadata.create_all(engine)
