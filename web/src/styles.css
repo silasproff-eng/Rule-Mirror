@@ -299,6 +299,7 @@ h3 { margin-bottom: 7px; font-size: 17px; }
 .switch { position: relative; width: 42px; height: 24px; padding: 3px; border: 0; border-radius: 20px; background: var(--line-strong); cursor: pointer; transition: background .2s ease; }
 .switch span { display: block; width: 18px; height: 18px; border-radius: 50%; background: #fff; transition: transform .2s ease; }
 .switch.on { background: var(--brand); }
+.switch:disabled { cursor: wait; opacity: .58; }
 .switch.on span { transform: translateX(18px); }
 .setting-status { display: flex !important; align-items: center; gap: 5px; color: var(--brand) !important; font-size: 10px !important; }
 .setting-status .icon { width: 14px; }

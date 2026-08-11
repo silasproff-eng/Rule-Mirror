@@ -34,6 +34,7 @@ const state: {
   hydrated: boolean
   selectedStrategy: string
   publicProfile: boolean
+  publicProfilePending: boolean
   portfolio: PortfolioSummary
   portfolioFile: File | null
   tradeSearch: string
@@ -59,6 +60,7 @@ const state: {
   hydrated: false,
   selectedStrategy: 'vwap-reclaim',
   publicProfile: localStorage.getItem('rulemirror.public') === 'true',
+  publicProfilePending: false,
   portfolio: { portfolio_value: null, holdings: [] },
   portfolioFile: null,
   tradeSearch: '',
@@ -325,7 +327,7 @@ function profileView() {
   const totalPnl = closed.length ? closed.reduce((total, trade) => total + (trade.realized_pnl ?? 0), 0) : null
   const entryNotional = closed.reduce((total, trade) => total + ((trade.quantity ?? 0) * (trade.entry_price ?? 0)), 0)
   const realizedReturn = totalPnl !== null && entryNotional > 0 ? (totalPnl / entryNotional) * 100 : null
-  return `${pageHeader('Workspace settings', 'Make it yours.', 'Your profile and display preferences stay local to this browser. Account deletion affects server data.', '')}<section class="metric-grid profile-metrics"><article class="metric-card"><span class="metric-label">Total profit / loss</span><strong class="metric-value ${totalPnl !== null && totalPnl < 0 ? 'negative-value' : ''}">${totalPnl === null ? '—' : `${totalPnl >= 0 ? '+' : ''}$${totalPnl.toFixed(2)}`}</strong><span class="metric-foot">${closed.length ? `${closed.length} closed trade${closed.length === 1 ? '' : 's'} · net fees included` : 'Close a trade to calculate'}</span></article><article class="metric-card"><span class="metric-label">Return percentage</span><strong class="metric-value">${realizedReturn === null ? '—' : `${realizedReturn >= 0 ? '+' : ''}${realizedReturn.toFixed(2)}%`}</strong><span class="metric-foot">Realized P/L ÷ matched entry notional</span></article><article class="metric-card"><span class="metric-label">Strategy performance</span><strong class="metric-value">${average === null ? '—' : `${average}/100`}</strong><span class="metric-foot">${reviewed.length ? `${reviewed.length} reviewed strategies` : 'No reviewed trades yet'}</span></article></section><div class="settings-layout"><section class="panel profile-card"><div class="profile-heading"><div class="avatar avatar-large">${state.profile.avatar ? `<img src="${state.profile.avatar}" alt="Profile photo">` : initials()}</div><div><p class="eyebrow">Your profile</p><h2>${escape(state.profile.name || 'Add your name')}</h2><p>${escape(state.email)}</p></div></div><label class="photo-upload" for="avatar-file">${icon('upload')} Upload profile picture<input id="avatar-file" type="file" accept="image/png,image/jpeg,image/webp"></label><form id="profile-form" class="form-stack"><label>Display name<input name="name" value="${escape(state.profile.name)}" placeholder="Your name"></label><label>Timezone<select name="timezone"><option value="${escape(state.profile.timezone)}">${escape(state.profile.timezone)}</option><option value="America/New_York">America/New_York</option><option value="America/Chicago">America/Chicago</option><option value="America/Los_Angeles">America/Los_Angeles</option><option value="UTC">UTC</option></select></label><button class="button button-secondary" type="submit">Save profile</button></form></section><section class="panel preference-card"><p class="eyebrow">Preferences</p><h2>Quiet by design.</h2><div class="setting-row"><div><strong>Appearance</strong><span>Use a light or dark workspace.</span></div><button class="switch ${state.profile.theme === 'dark' ? 'on' : ''}" id="theme-setting" type="button" role="switch" aria-checked="${state.profile.theme === 'dark'}"><span></span></button></div><div class="setting-row"><div><strong>Public profile</strong><span>${state.publicProfile ? 'Your profile shares summary metrics: portfolio value, P/L, win rate, and discipline.' : 'Private by default; no account details are shared.'}</span></div><button class="switch ${state.publicProfile ? 'on' : ''}" id="public-profile" type="button" role="switch" aria-checked="${state.publicProfile}"><span></span></button></div><div class="danger-zone"><p class="eyebrow">Danger zone</p><h3>Delete account and data</h3><p>Removes your imports, reconstructed trades, analyses, and sessions. This cannot be undone.</p><button class="button button-danger" id="delete-account" type="button">${icon('trash')} Delete account</button></div></section></div>`
+  return `${pageHeader('Workspace settings', 'Make it yours.', 'Your profile and display preferences stay local to this browser. Account deletion affects server data.', '')}<section class="metric-grid profile-metrics"><article class="metric-card"><span class="metric-label">Total profit / loss</span><strong class="metric-value ${totalPnl !== null && totalPnl < 0 ? 'negative-value' : ''}">${totalPnl === null ? '—' : `${totalPnl >= 0 ? '+' : ''}$${totalPnl.toFixed(2)}`}</strong><span class="metric-foot">${closed.length ? `${closed.length} closed trade${closed.length === 1 ? '' : 's'} · net fees included` : 'Close a trade to calculate'}</span></article><article class="metric-card"><span class="metric-label">Return percentage</span><strong class="metric-value">${realizedReturn === null ? '—' : `${realizedReturn >= 0 ? '+' : ''}${realizedReturn.toFixed(2)}%`}</strong><span class="metric-foot">Realized P/L ÷ matched entry notional</span></article><article class="metric-card"><span class="metric-label">Strategy performance</span><strong class="metric-value">${average === null ? '—' : `${average}/100`}</strong><span class="metric-foot">${reviewed.length ? `${reviewed.length} reviewed strategies` : 'No reviewed trades yet'}</span></article></section><div class="settings-layout"><section class="panel profile-card"><div class="profile-heading"><div class="avatar avatar-large">${state.profile.avatar ? `<img src="${state.profile.avatar}" alt="Profile photo">` : initials()}</div><div><p class="eyebrow">Your profile</p><h2>${escape(state.profile.name || 'Add your name')}</h2><p>${escape(state.email)}</p></div></div><label class="photo-upload" for="avatar-file">${icon('upload')} Upload profile picture<input id="avatar-file" type="file" accept="image/png,image/jpeg,image/webp"></label><form id="profile-form" class="form-stack"><label>Display name<input name="name" value="${escape(state.profile.name)}" placeholder="Your name"></label><label>Timezone<select name="timezone"><option value="${escape(state.profile.timezone)}">${escape(state.profile.timezone)}</option><option value="America/New_York">America/New_York</option><option value="America/Chicago">America/Chicago</option><option value="America/Los_Angeles">America/Los_Angeles</option><option value="UTC">UTC</option></select></label><button class="button button-secondary" type="submit">Save profile</button></form></section><section class="panel preference-card"><p class="eyebrow">Preferences</p><h2>Quiet by design.</h2><div class="setting-row"><div><strong>Appearance</strong><span>Use a light or dark workspace.</span></div><button class="switch ${state.profile.theme === 'dark' ? 'on' : ''}" id="theme-setting" type="button" role="switch" aria-checked="${state.profile.theme === 'dark'}"><span></span></button></div><div class="setting-row"><div><strong>Public profile</strong><span>${state.publicProfile ? 'Your profile shares summary metrics: portfolio value, P/L, win rate, and discipline.' : 'Private by default; no account details are shared.'}</span></div><button class="switch ${state.publicProfile ? 'on' : ''}" id="public-profile" type="button" role="switch" aria-checked="${state.publicProfile}" aria-busy="${state.publicProfilePending}" ${state.publicProfilePending ? 'disabled' : ''}><span></span></button></div><div class="danger-zone"><p class="eyebrow">Danger zone</p><h3>Delete account and data</h3><p>Removes your imports, reconstructed trades, analyses, and sessions. This cannot be undone.</p><button class="button button-danger" id="delete-account" type="button">${icon('trash')} Delete account</button></div></section></div>`
 }
 
 function analysisResultView() {
@@ -386,15 +388,7 @@ function bindEvents() {
   mount.querySelector('#sign-out')?.addEventListener('click', () => void signOut())
   mount.querySelector('#theme-toggle')?.addEventListener('click', toggleTheme)
   mount.querySelector('#theme-setting')?.addEventListener('click', toggleTheme)
-  mount.querySelector('#public-profile')?.addEventListener('click', () => {
-    state.publicProfile = !state.publicProfile
-    localStorage.setItem('rulemirror.public', String(state.publicProfile))
-    void withAuth((accessToken) => api.setPublicProfile(state.publicProfile, accessToken)).then(() => setNotice(state.publicProfile ? 'Public profile visibility enabled.' : 'Public profile visibility disabled.', 'success')).catch((error) => {
-      state.publicProfile = !state.publicProfile
-      localStorage.setItem('rulemirror.public', String(state.publicProfile))
-      setNotice(errorMessage(error), 'error')
-    })
-  })
+  mount.querySelector('#public-profile')?.addEventListener('click', () => void togglePublicProfile())
   mount.querySelector<HTMLInputElement>('#csv-file')?.addEventListener('change', (event) => {
     selectFile((event.target as HTMLInputElement).files?.[0] ?? null)
   })
@@ -702,6 +696,24 @@ function toggleTheme() {
   state.profile.theme = state.profile.theme === 'light' ? 'dark' : 'light'
   persistProfile()
   render()
+}
+
+async function togglePublicProfile() {
+  if (state.publicProfilePending) return
+  const next = !state.publicProfile
+  state.publicProfilePending = true
+  render()
+  try {
+    const result = await withAuth((accessToken) => api.setPublicProfile(next, accessToken))
+    state.publicProfile = result.public_profile
+    localStorage.setItem('rulemirror.public', String(result.public_profile))
+    setNotice(result.public_profile ? 'Public profile visibility enabled.' : 'Public profile visibility disabled.', 'success')
+  } catch (error) {
+    setNotice(errorMessage(error), 'error')
+  } finally {
+    state.publicProfilePending = false
+    render()
+  }
 }
 
 function syncNavA11y() {
