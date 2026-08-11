@@ -1,4 +1,5 @@
 import re
+from uuid import uuid4
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
@@ -10,6 +11,7 @@ from app.api.routes import router
 from app.core.config import get_settings
 
 CLIENT_SEGMENT = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]*")
+REQUEST_ID = re.compile(r"[A-Za-z0-9._-]{1,128}")
 RESERVED_ROUTES = {"api", "assets", "docs", "health", "openapi.json", "redoc"}
 ROOT_STATIC_FILES = {"apple-touch-icon.png", "favicon-32.png", "rule-mirror-mascot.js", "rulemirror-logo.png"}
 DEFAULT_WEB_DIST = Path(__file__).resolve().parents[2] / "web" / "dist"
@@ -35,6 +37,8 @@ def create_app(web_dist: Path | None = None, environment: str | None = None) -> 
     @application.middleware("http")
     async def security_headers(request, call_next):
         response = await call_next(request)
+        request_id = request.headers.get("X-Request-ID", "")
+        response.headers["X-Request-ID"] = request_id if REQUEST_ID.fullmatch(request_id) else str(uuid4())
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"

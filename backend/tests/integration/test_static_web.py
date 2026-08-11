@@ -63,6 +63,17 @@ def test_api_responses_are_not_cached_while_static_shell_is_unchanged(tmp_path):
     assert "cache-control" not in client.get("/").headers
 
 
+def test_request_ids_echo_safe_values_and_cover_static_and_errors(tmp_path):
+    dist = tmp_path / "dist"
+    dist.mkdir()
+    (dist / "index.html").write_text("<main>shell</main>")
+    client = TestClient(create_app(dist, "test"))
+    assert client.get("/", headers={"X-Request-ID": "trace-123"}).headers["x-request-id"] == "trace-123"
+    generated = client.get("/api/v1/not-real", headers={"X-Request-ID": "bad value"}).headers["x-request-id"]
+    assert generated != "bad value"
+    assert len(generated) == 36
+
+
 def test_brand_assets_are_served_as_root_files(tmp_path):
     dist = tmp_path / "dist"
     dist.mkdir()
