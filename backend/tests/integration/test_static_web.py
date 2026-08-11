@@ -42,6 +42,18 @@ def test_missing_web_build_is_explicit_outside_tests(tmp_path):
     assert response.json()["detail"]["code"] == "web_build_missing"
 
 
+def test_security_headers_cover_api_and_static_responses(tmp_path):
+    dist = tmp_path / "dist"
+    dist.mkdir()
+    (dist / "index.html").write_text("<main>shell</main>")
+    client = TestClient(create_app(dist, "test"))
+    for response in (client.get("/health"), client.get("/")):
+        assert response.headers["x-content-type-options"] == "nosniff"
+        assert response.headers["x-frame-options"] == "DENY"
+        assert response.headers["referrer-policy"] == "strict-origin-when-cross-origin"
+        assert response.headers["permissions-policy"] == "camera=(), microphone=(), geolocation=()"
+
+
 def test_brand_assets_are_served_as_root_files(tmp_path):
     dist = tmp_path / "dist"
     dist.mkdir()
