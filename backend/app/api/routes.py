@@ -15,7 +15,7 @@ from fastapi import (
     UploadFile,
     status,
 )
-from sqlalchemy import delete, func, or_, select
+from sqlalchemy import delete, func, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -248,6 +248,24 @@ def logout(request: RefreshRequest, session: Session = Depends(database)):
 
 @router.delete("/account", status_code=204)
 def delete_account(user_id: str = Depends(current_user_id), session: Session = Depends(database)):
+    trade_ids = select(Trade.id).where(Trade.user_id == user_id)
+    run_ids = select(AnalysisRun.id).where(AnalysisRun.user_id == user_id)
+    analysis_ids = select(TradeAnalysis.id).where(TradeAnalysis.trade_id.in_(trade_ids))
+    revision_ids = select(TradeRevision.id).where(TradeRevision.trade_id.in_(trade_ids))
+    execution_ids = select(Execution.id).where(Execution.user_id == user_id)
+    batch_ids = select(ImportBatch.id).where(ImportBatch.user_id == user_id)
+    session.execute(delete(RuleEvaluation).where(RuleEvaluation.trade_analysis_id.in_(analysis_ids)))
+    session.execute(delete(TradeAnalysis).where(TradeAnalysis.run_id.in_(run_ids)))
+    session.execute(delete(AnalysisRun).where(AnalysisRun.user_id == user_id))
+    session.execute(delete(TradeRevisionAllocation).where(TradeRevisionAllocation.trade_revision_id.in_(revision_ids)))
+    session.execute(update(Trade).where(Trade.user_id == user_id).values(current_revision_id=None))
+    session.execute(delete(TradeRevision).where(TradeRevision.trade_id.in_(trade_ids)))
+    session.execute(delete(Trade).where(Trade.user_id == user_id))
+    session.execute(delete(ImportBatchExecution).where(ImportBatchExecution.import_batch_id.in_(batch_ids)))
+    session.execute(delete(ImportBatch).where(ImportBatch.user_id == user_id))
+    session.execute(delete(Execution).where(Execution.user_id == user_id))
+    session.execute(delete(PortfolioHolding).where(PortfolioHolding.user_id == user_id))
+    session.execute(delete(RefreshSession).where(RefreshSession.user_id == user_id))
     session.execute(delete(User).where(User.id == user_id))
     session.commit()
     return Response(status_code=204)

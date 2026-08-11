@@ -11,10 +11,15 @@ from app.db.models import (
     Execution,
     ImportBatch,
     ImportBatchExecution,
+    PortfolioHolding,
+    RefreshSession,
     RuleEvaluation,
+    StrategyVersion,
     Trade,
     TradeAnalysis,
     TradeRevision,
+    TradeRevisionAllocation,
+    User,
 )
 from app.main import app
 from app.core.config import get_settings
@@ -73,13 +78,16 @@ def test_protected_routes_use_structured_auth_errors(tmp_path):
     for headers in ({}, {"Authorization": "Basic abc"}, {"Authorization": "Bearer malformed"}):
         response = client.get("/api/v1/trades", headers=headers)
         assert response.status_code == 401
+        assert response.headers["cache-control"] == "no-store"
         assert response.json()["detail"] == {"code": "invalid_access_token", "message": "Authentication is required"}
     expired = jwt.encode({"sub": "user", "typ": "access", "exp": datetime.now(UTC) - timedelta(minutes=1)}, get_settings().secret_key, algorithm="HS256")
     response = client.get("/api/v1/trades", headers={"Authorization": f"Bearer {expired}"})
     assert response.status_code == 401
     assert response.json()["detail"]["code"] == "invalid_access_token"
     tokens = register(client, "valid-token@example.com")
-    assert client.get("/api/v1/trades", headers=authorization(tokens)).status_code == 200
+    valid = client.get("/api/v1/trades", headers=authorization(tokens))
+    assert valid.status_code == 200
+    assert valid.headers["cache-control"] == "no-store"
 
 
 def test_auth_refresh_revocation_preview_and_owner_scope(tmp_path):
@@ -160,8 +168,19 @@ def test_auth_refresh_revocation_preview_and_owner_scope(tmp_path):
 def test_account_deletion_revokes_owned_data(tmp_path):
     client, factory = client_for(tmp_path)
     tokens = register(client, "delete@example.com")
+    headers = authorization(tokens)
+    preview = client.post("/api/v1/imports/preview", files={"file": ("fills.csv", FIXTURE.read_bytes(), "text/csv")}, headers=headers)
+    mapping = preview.json()["suggested_mapping"]
+    imported = client.post("/api/v1/imports", files={"file": ("fills.csv", FIXTURE.read_bytes(), "text/csv")}, data={"mapping": json.dumps(mapping)}, headers=headers)
+    trade = imported.json()["candidate_trades"][0]
+    assert client.post("/api/v1/analysis-runs", json={"trade_id": trade["id"], "trade_revision_id": trade["trade_revision_id"]}, headers=headers).status_code == 202
+    assert client.post("/api/v1/portfolio/import", files={"file": ("positions.csv", b"Symbol,Description,Quantity,Price,Market Value\nNVDA,NVIDIA CORP,1,$100,$100\n", "text/csv")}, headers=headers).status_code == 201
     response = client.delete("/api/v1/account", headers=authorization(tokens))
     assert response.status_code == 204
+    with factory() as session:
+        for model in (User, RefreshSession, ImportBatch, Execution, PortfolioHolding, Trade, TradeRevision, TradeRevisionAllocation, AnalysisRun, TradeAnalysis, RuleEvaluation, ImportBatchExecution):
+            assert session.scalar(select(func.count()).select_from(model)) == 0
+        assert session.scalar(select(func.count()).select_from(StrategyVersion)) == 1
     app.dependency_overrides.clear()
 
 
