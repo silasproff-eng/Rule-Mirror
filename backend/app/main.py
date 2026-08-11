@@ -11,7 +11,7 @@ from app.core.config import get_settings
 
 CLIENT_SEGMENT = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]*")
 RESERVED_ROUTES = {"api", "assets", "docs", "health", "openapi.json", "redoc"}
-ROOT_STATIC_FILES = {"apple-touch-icon.png", "favicon-32.png", "rulemirror-logo.png"}
+ROOT_STATIC_FILES = {"apple-touch-icon.png", "favicon-32.png", "rule-mirror-mascot.js", "rulemirror-logo.png"}
 DEFAULT_WEB_DIST = Path(__file__).resolve().parents[2] / "web" / "dist"
 
 

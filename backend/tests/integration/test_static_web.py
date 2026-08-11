@@ -10,6 +10,7 @@ def test_spa_fallback_is_limited_to_valid_client_routes(tmp_path):
     (dist / "rulemirror-logo.png").write_bytes(b"logo")
     (dist / "favicon-32.png").write_bytes(b"favicon")
     (dist / "apple-touch-icon.png").write_bytes(b"touch")
+    (dist / "rule-mirror-mascot.js").write_text("customElements.define('rule-mirror-mascot', class {})")
     (assets / "app.js").write_text("export {}")
     client = TestClient(create_app(dist, "test"))
 
@@ -22,6 +23,8 @@ def test_spa_fallback_is_limited_to_valid_client_routes(tmp_path):
     assert client.get("/rulemirror-logo.png").content == b"logo"
     assert client.get("/favicon-32.png").content == b"favicon"
     assert client.get("/apple-touch-icon.png").content == b"touch"
+    assert client.get("/rule-mirror-mascot.js").text == "customElements.define('rule-mirror-mascot', class {})"
+    assert client.get("/unrelated-script.js").status_code == 404
     assert client.get("/api/v1/not-real").status_code == 404
     assert client.get("/docs").status_code == 404
     assert client.get("/favicon.ico").status_code == 404
