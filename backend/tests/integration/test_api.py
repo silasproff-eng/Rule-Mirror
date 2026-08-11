@@ -102,6 +102,7 @@ def test_auth_refresh_revocation_preview_and_owner_scope(tmp_path):
     preview = client.post("/api/v1/imports/preview", files={"file": ("fills.csv", FIXTURE.read_bytes(), "text/csv")}, headers=authorization(rotated.json()))
     after = factory().scalar(select(func.count()).select_from(ImportBatch))
     assert preview.status_code == 200
+    assert "created_at" not in preview.json()
     assert before == after == 0
     mapping = preview.json()["suggested_mapping"]
     imported = client.post("/api/v1/imports", files={"file": ("fills.csv", FIXTURE.read_bytes(), "text/csv")}, data={"mapping": json.dumps(mapping)}, headers=authorization(rotated.json()))
@@ -215,6 +216,7 @@ def test_split_file_reconstructs_against_full_execution_history(tmp_path):
     preview_response = client.post("/api/v1/imports/preview", files={"file": ("first.csv", first_data, "text/csv")}, headers=authorization(tokens))
     mapping = preview_response.json()["suggested_mapping"]
     first = client.post("/api/v1/imports", files={"file": ("first.csv", first_data, "text/csv")}, data={"mapping": json.dumps(mapping)}, headers=authorization(tokens))
+    assert first.json()["created_at"].endswith("+00:00")
     assert first.json()["candidate_trades"] == []
     assert first.json()["affected_trades"][0]["analysis_eligible"] is False
     first_trade_id = first.json()["affected_trades"][0]["trade_id"]

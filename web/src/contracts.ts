@@ -74,6 +74,7 @@ export type AffectedTrade = {
 export type ImportResult = {
   id: string
   status: string
+  created_at: string
   accepted_execution_count: number
   affected_trade_count: number
   duplicate_count: number

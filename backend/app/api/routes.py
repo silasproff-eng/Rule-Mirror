@@ -411,7 +411,7 @@ async def import_csv(file: UploadFile = File(), mapping: str = Form(), timezone:
     session.commit()
     affected_trades = [{"trade_id": value["trade"].id, "trade_revision_id": value["revision_id"], "change_type": value["change_type"], "analysis_eligible": value["trade"].closed_at is not None, "symbol": value["trade"].symbol, "direction": value["trade"].direction, "opened_at": utc_value(value["trade"].opened_at).isoformat(), "closed_at": utc_value(value["trade"].closed_at).isoformat() if value["trade"].closed_at else None} for value in candidates]
     candidate_trades = [{"id": value["trade_id"], "trade_revision_id": value["trade_revision_id"], "symbol": value["symbol"], "direction": value["direction"], "opened_at": value["opened_at"], "closed_at": value["closed_at"]} for value in affected_trades if value["analysis_eligible"]]
-    return {"id": batch.id, "status": batch.status, "accepted_execution_count": batch.execution_count, "execution_count": batch.execution_count, "affected_trade_count": batch.trade_count, "trade_count": batch.trade_count, "duplicate_count": batch.duplicate_count, "error_count": 0, "affected_trades": affected_trades, "candidate_trades": candidate_trades, "trades": candidate_trades}
+    return {"id": batch.id, "status": batch.status, "created_at": utc_value(batch.created_at).isoformat(), "accepted_execution_count": batch.execution_count, "execution_count": batch.execution_count, "affected_trade_count": batch.trade_count, "trade_count": batch.trade_count, "duplicate_count": batch.duplicate_count, "error_count": 0, "affected_trades": affected_trades, "candidate_trades": candidate_trades, "trades": candidate_trades}
 
 
 @router.get("/imports/{batch_id}")
