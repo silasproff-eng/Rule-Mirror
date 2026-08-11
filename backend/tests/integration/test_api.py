@@ -5,6 +5,7 @@ from datetime import UTC, datetime, timedelta
 import jwt
 
 from app.api.dependencies import database
+from app.api.routes import trade_history
 from app.db.base import Base, build_engine
 from app.db.models import (
     AnalysisRun,
@@ -268,6 +269,31 @@ def test_superseded_trade_history_and_analysis_remain_queryable(tmp_path):
     assert result_after.status_code == 200
     assert result_after.json()["trade_id"] == original_trade["id"]
     assert result_after.json()["trade_revision_id"] == original_trade["trade_revision_id"]
+    app.dependency_overrides.clear()
+
+
+def test_trade_history_bulk_loads_current_revision_details(tmp_path):
+    client, factory = client_for(tmp_path)
+    tokens = register(client, "history-bulk@example.com")
+    headers = authorization(tokens)
+    preview_response = client.post("/api/v1/imports/preview", files={"file": ("fills.csv", FIXTURE.read_bytes(), "text/csv")}, headers=headers)
+    imported = client.post("/api/v1/imports", files={"file": ("fills.csv", FIXTURE.read_bytes(), "text/csv")}, data={"mapping": json.dumps(preview_response.json()["suggested_mapping"])}, headers=headers)
+    assert imported.status_code == 201
+    with factory() as session:
+        user_id = session.scalar(select(User.id).where(User.email == "history-bulk@example.com"))
+        statements: list[str] = []
+
+        def record_statement(_connection, _cursor, statement, _parameters, _context, _executemany):
+            if statement.lstrip().upper().startswith("SELECT"):
+                statements.append(statement)
+
+        event.listen(session.bind, "before_cursor_execute", record_statement)
+        try:
+            history = trade_history(user_id=user_id, session=session)
+        finally:
+            event.remove(session.bind, "before_cursor_execute", record_statement)
+    assert len(history) == 2
+    assert len(statements) == 5
     app.dependency_overrides.clear()
 
 
