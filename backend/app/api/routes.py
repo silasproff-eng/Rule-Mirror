@@ -63,6 +63,19 @@ def utc_value(value: datetime) -> datetime:
     return value.replace(tzinfo=UTC) if value.tzinfo is None else value.astimezone(UTC)
 
 
+def fail_stale_analysis_run(run: AnalysisRun, stale_seconds: int, now: datetime | None = None) -> bool:
+    if run.status not in {"queued", "running"}:
+        return False
+    current_time = now or datetime.now(UTC)
+    last_progress = utc_value(run.started_at or run.created_at)
+    if last_progress > current_time - timedelta(seconds=max(stale_seconds, 1)):
+        return False
+    run.status = "failed"
+    run.failure_code = "analysis_interrupted"
+    run.finished_at = current_time
+    return True
+
+
 def normalized_from_model(value: Execution) -> NormalizedExecution:
     return NormalizedExecution(
         value.symbol,
@@ -554,7 +567,11 @@ def create_analysis(request: AnalysisRequest, tasks: BackgroundTasks, user_id: s
         if not retry_of:
             raise HTTPException(409, detail={"code": "retry_invalid", "message": "Only a failed run for this revision can be retried"})
     else:
-        reusable = session.scalar(select(AnalysisRun).where(AnalysisRun.user_id == user_id, AnalysisRun.trade_revision_id == revision.id, AnalysisRun.strategy_version_id == strategy.id, AnalysisRun.provider == settings.market_data_provider, AnalysisRun.engine_version == f"{request.strategy_slug}-1", AnalysisRun.status.in_(["queued", "running", "completed"])).order_by(AnalysisRun.created_at.desc()))
+        reusable_runs = session.scalars(select(AnalysisRun).where(AnalysisRun.user_id == user_id, AnalysisRun.trade_revision_id == revision.id, AnalysisRun.strategy_version_id == strategy.id, AnalysisRun.provider == settings.market_data_provider, AnalysisRun.engine_version == f"{request.strategy_slug}-1", AnalysisRun.status.in_(["queued", "running", "completed"])).order_by(AnalysisRun.created_at.desc())).all()
+        stale_runs = [run for run in reusable_runs if fail_stale_analysis_run(run, settings.analysis_run_stale_seconds)]
+        if stale_runs:
+            session.commit()
+        reusable = next((run for run in reusable_runs if run.status in {"queued", "running", "completed"}), None)
         if reusable:
             return {"id": reusable.id, "status": reusable.status, "reused": True}
     run = AnalysisRun(user_id=user_id, trade_id=trade.id, trade_revision_id=revision.id, strategy_version_id=strategy.id, retry_of_run_id=retry_of.id if retry_of else None, provider=settings.market_data_provider, engine_version=f"{request.strategy_slug}-1", status="queued", failure_code=None, created_at=datetime.now(UTC), started_at=None, finished_at=None)
@@ -569,6 +586,8 @@ def analysis_run(run_id: str, user_id: str = Depends(current_user_id), session: 
     run = session.scalar(select(AnalysisRun).where(AnalysisRun.id == run_id, AnalysisRun.user_id == user_id))
     if not run:
         raise HTTPException(404, detail={"code": "not_found", "message": "Analysis run was not found"})
+    if fail_stale_analysis_run(run, get_settings().analysis_run_stale_seconds):
+        session.commit()
     analysis = session.scalar(select(TradeAnalysis).where(TradeAnalysis.run_id == run.id))
     return {"id": run.id, "status": run.status, "failure_code": run.failure_code, "retryable": run.status == "failed", "retry_of_run_id": run.retry_of_run_id, "created_at": utc_value(run.created_at).isoformat(), "started_at": utc_value(run.started_at).isoformat() if run.started_at else None, "finished_at": utc_value(run.finished_at).isoformat() if run.finished_at else None, "trade_analysis_id": analysis.id if analysis else None}
 

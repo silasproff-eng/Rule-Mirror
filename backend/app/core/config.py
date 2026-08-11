@@ -16,6 +16,7 @@ class Settings(BaseSettings):
     twelve_data_api_key: str = ""
     twelve_data_base_url: str = "https://api.twelvedata.com"
     twelve_data_timeout_seconds: float = 8.0
+    analysis_run_stale_seconds: int = 120
     max_csv_bytes: int = 2_000_000
     max_csv_rows: int = 20_000
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")

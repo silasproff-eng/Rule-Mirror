@@ -24,6 +24,7 @@ from app.db.models import (
 )
 from app.main import app
 from app.core.config import get_settings
+from app.strategies.vwap_reclaim import DEFAULT_DEFINITION
 from fastapi.testclient import TestClient
 from sqlalchemy import event, func, select
 from sqlalchemy.orm import Session, sessionmaker
@@ -294,6 +295,68 @@ def test_trade_history_bulk_loads_current_revision_details(tmp_path):
             event.remove(session.bind, "before_cursor_execute", record_statement)
     assert len(history) == 2
     assert len(statements) == 5
+    app.dependency_overrides.clear()
+
+
+def test_stale_analysis_runs_fail_before_status_or_reuse(tmp_path):
+    client, factory = client_for(tmp_path)
+    tokens = register(client, "stale-run@example.com")
+    headers = authorization(tokens)
+    preview_response = client.post("/api/v1/imports/preview", files={"file": ("fills.csv", FIXTURE.read_bytes(), "text/csv")}, headers=headers)
+    imported = client.post("/api/v1/imports", files={"file": ("fills.csv", FIXTURE.read_bytes(), "text/csv")}, data={"mapping": json.dumps(preview_response.json()["suggested_mapping"])}, headers=headers)
+    trade_id = imported.json()["candidate_trades"][0]["id"]
+    revision_id = imported.json()["candidate_trades"][0]["trade_revision_id"]
+    with factory() as session:
+        user = session.scalar(select(User).where(User.email == "stale-run@example.com"))
+        strategy = StrategyVersion(slug="vwap-reclaim", version=1, definition=DEFAULT_DEFINITION, created_at=datetime.now(UTC))
+        session.add(strategy)
+        session.flush()
+        stale = AnalysisRun(user_id=user.id, trade_id=trade_id, trade_revision_id=revision_id, strategy_version_id=strategy.id, retry_of_run_id=None, provider=get_settings().market_data_provider, engine_version="vwap-reclaim-1", status="running", failure_code=None, created_at=datetime.now(UTC) - timedelta(seconds=get_settings().analysis_run_stale_seconds + 1), started_at=datetime.now(UTC) - timedelta(seconds=get_settings().analysis_run_stale_seconds + 1), finished_at=None)
+        session.add(stale)
+        session.commit()
+        stale_id = stale.id
+    replacement = client.post("/api/v1/analysis-runs", json={"trade_id": trade_id}, headers=headers)
+    assert replacement.status_code == 202
+    assert replacement.json()["id"] != stale_id
+    assert replacement.json()["reused"] is False
+    with factory() as session:
+        previous = session.get(AnalysisRun, stale_id)
+        assert previous.status == "failed"
+        assert previous.failure_code == "analysis_interrupted"
+        strategy = session.get(StrategyVersion, previous.strategy_version_id)
+        stale_status_run = AnalysisRun(user_id=previous.user_id, trade_id=trade_id, trade_revision_id=revision_id, strategy_version_id=strategy.id, retry_of_run_id=None, provider=get_settings().market_data_provider, engine_version="vwap-reclaim-1", status="running", failure_code=None, created_at=datetime.now(UTC) - timedelta(seconds=get_settings().analysis_run_stale_seconds + 1), started_at=datetime.now(UTC) - timedelta(seconds=get_settings().analysis_run_stale_seconds + 1), finished_at=None)
+        session.add(stale_status_run)
+        session.commit()
+        stale_status_id = stale_status_run.id
+    stale_status = client.get(f"/api/v1/analysis-runs/{stale_status_id}", headers=headers)
+    assert stale_status.json()["status"] == "failed"
+    assert stale_status.json()["failure_code"] == "analysis_interrupted"
+    assert stale_status.json()["finished_at"] is not None
+    app.dependency_overrides.clear()
+
+
+def test_recent_analysis_run_remains_reusable(tmp_path):
+    client, factory = client_for(tmp_path)
+    tokens = register(client, "recent-run@example.com")
+    headers = authorization(tokens)
+    preview_response = client.post("/api/v1/imports/preview", files={"file": ("fills.csv", FIXTURE.read_bytes(), "text/csv")}, headers=headers)
+    imported = client.post("/api/v1/imports", files={"file": ("fills.csv", FIXTURE.read_bytes(), "text/csv")}, data={"mapping": json.dumps(preview_response.json()["suggested_mapping"])}, headers=headers)
+    trade_id = imported.json()["candidate_trades"][0]["id"]
+    revision_id = imported.json()["candidate_trades"][0]["trade_revision_id"]
+    with factory() as session:
+        user = session.scalar(select(User).where(User.email == "recent-run@example.com"))
+        strategy = StrategyVersion(slug="vwap-reclaim", version=1, definition=DEFAULT_DEFINITION, created_at=datetime.now(UTC))
+        session.add(strategy)
+        session.flush()
+        current_time = datetime.now(UTC)
+        recent = AnalysisRun(user_id=user.id, trade_id=trade_id, trade_revision_id=revision_id, strategy_version_id=strategy.id, retry_of_run_id=None, provider=get_settings().market_data_provider, engine_version="vwap-reclaim-1", status="queued", failure_code=None, created_at=current_time, started_at=None, finished_at=None)
+        session.add(recent)
+        session.commit()
+        recent_id = recent.id
+    recent_status = client.get(f"/api/v1/analysis-runs/{recent_id}", headers=headers)
+    assert recent_status.json()["status"] == "queued"
+    reused = client.post("/api/v1/analysis-runs", json={"trade_id": trade_id}, headers=headers)
+    assert reused.json() == {"id": recent_id, "status": "queued", "reused": True}
     app.dependency_overrides.clear()
 
 
