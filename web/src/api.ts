@@ -14,6 +14,7 @@ import type {
 } from './contracts'
 
 export const API_BASE_PATH = '/api/v1'
+export const DEFAULT_REQUEST_TIMEOUT_MS = 15000
 
 export class ApiError extends Error {
   constructor(
@@ -33,7 +34,10 @@ type ErrorEnvelope = {
 }
 
 export class LunaApiClient {
-  constructor(private readonly fetcher: typeof fetch = globalThis.fetch.bind(globalThis)) {}
+  constructor(
+    private readonly fetcher: typeof fetch = globalThis.fetch.bind(globalThis),
+    private readonly timeoutMs = DEFAULT_REQUEST_TIMEOUT_MS,
+  ) {}
 
   register(email: string, password: string): Promise<TokenPair> {
     return this.request('/auth/register', {
@@ -155,7 +159,26 @@ export class LunaApiClient {
   }
 
   private async request<T>(path: string, init: RequestInit = {}): Promise<T> {
-    const response = await this.fetcher(`${API_BASE_PATH}${path}`, init)
+    const controller = new AbortController()
+    let timedOut = false
+    const callerSignal = init.signal
+    const forwardAbort = () => controller.abort()
+    if (callerSignal?.aborted) controller.abort()
+    else callerSignal?.addEventListener('abort', forwardAbort, { once: true })
+    const timer = setTimeout(() => {
+      timedOut = true
+      controller.abort()
+    }, this.timeoutMs)
+    let response: Response
+    try {
+      response = await this.fetcher(`${API_BASE_PATH}${path}`, { ...init, signal: controller.signal })
+    } catch (error) {
+      if (timedOut) throw new ApiError('network_timeout', 'The request timed out. Check your connection and try again.', 408)
+      throw error
+    } finally {
+      clearTimeout(timer)
+      callerSignal?.removeEventListener('abort', forwardAbort)
+    }
     const raw = await response.text()
     let body: T | ErrorEnvelope = {} as T
     if (raw) {

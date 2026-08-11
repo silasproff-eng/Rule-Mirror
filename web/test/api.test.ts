@@ -51,4 +51,27 @@ describe('LunaApiClient', () => {
       new ApiError('invalid_response', 'The service returned an unreadable response.', 502),
     )
   })
+
+  it('turns an aborted deadline into a retryable timeout error', async () => {
+    const fetcher = vi.fn((_input: RequestInfo | URL, init?: RequestInit) => new Promise<Response>((_, reject) => {
+      init?.signal?.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')), { once: true })
+    }))
+    const client = new LunaApiClient(fetcher as typeof fetch, 1)
+    await expect(client.createAnalysis({ trade_id: 'trade-1' }, 'token')).rejects.toEqual(
+      new ApiError('network_timeout', 'The request timed out. Check your connection and try again.', 408),
+    )
+    expect(fetcher).toHaveBeenCalledTimes(1)
+  })
+
+  it('forwards caller cancellation to the request without retrying', async () => {
+    const caller = new AbortController()
+    const fetcher = vi.fn((_input: RequestInfo | URL, init?: RequestInit) => new Promise<Response>((_, reject) => {
+      init?.signal?.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')), { once: true })
+    }))
+    const client = new LunaApiClient(fetcher as typeof fetch, 1_000)
+    const request = (client as unknown as { request: (path: string, init: RequestInit) => Promise<unknown> }).request('/health', { signal: caller.signal })
+    caller.abort()
+    await expect(request).rejects.toThrow('Aborted')
+    expect(fetcher).toHaveBeenCalledTimes(1)
+  })
 })
