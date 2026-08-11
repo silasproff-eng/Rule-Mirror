@@ -2,6 +2,7 @@ import './styles.css'
 import { ApiError, LunaApiClient } from './api'
 import type { AccountProfile, AffectedTrade, AnalysisRun, ImportPreview, ImportResult, ImportSummary, PortfolioHolding, PortfolioSummary, TradeAnalysis, TradeHistory } from './contracts'
 import { STRATEGY_CATALOG } from './strategy_catalog'
+import { pollAnalysisRun } from './analysis_polling'
 
 type Page = 'overview' | 'portfolio' | 'analyze' | 'trades' | 'strategies' | 'insights' | 'profile' | 'account'
 type Trade = AffectedTrade & { analyzed?: boolean; score?: number | null; quantity?: number | null; entry_price?: number | null; exit_price?: number | null; realized_pnl?: number | null; return_percent?: number | null }
@@ -609,12 +610,16 @@ async function analyzeTrade(trade: Trade) {
   render()
   try {
     const created = await withAuth((accessToken) => api.createAnalysis({ trade_id: trade.trade_id, trade_revision_id: trade.trade_revision_id, strategy_slug: state.selectedStrategy }, accessToken))
-    let run = await withAuth((accessToken) => api.analysisRun(created.id, accessToken))
-    for (let attempt = 0; attempt < 12 && (run.status === 'queued' || run.status === 'running'); attempt += 1) {
-      await new Promise((resolve) => window.setTimeout(resolve, 500))
-      run = await withAuth((accessToken) => api.analysisRun(created.id, accessToken))
-    }
+    const run = await pollAnalysisRun(
+      () => withAuth((accessToken) => api.analysisRun(created.id, accessToken)),
+      (milliseconds) => new Promise((resolve) => window.setTimeout(resolve, milliseconds)),
+    )
     state.run = run
+    if (run.status === 'queued' || run.status === 'running') {
+      state.busy = null
+      setNotice('Analysis is still running. You can return to this trade and retry without starting a duplicate run.', 'info')
+      return
+    }
     if (run.status !== 'completed' || !run.trade_analysis_id) throw new Error(run.failure_code || 'The analysis did not complete.')
     state.analysis = await withAuth((accessToken) => api.tradeAnalysis(run.trade_analysis_id as string, accessToken))
     trade.analyzed = true
