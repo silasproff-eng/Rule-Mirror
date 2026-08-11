@@ -33,7 +33,7 @@ FIXTURE = Path(__file__).parents[1] / "fixtures" / "executions.csv"
 def test_cors_allows_profile_put_for_trusted_origin_and_rejects_untrusted():
     client = TestClient(app)
     headers = {
-        "Origin": "http://localhost:8000",
+        "Origin": get_settings().allowed_origins[0],
         "Access-Control-Request-Method": "PUT",
         "Access-Control-Request-Headers": "authorization,content-type",
     }

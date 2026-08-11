@@ -3,6 +3,7 @@ import { ApiError, LunaApiClient } from './api'
 import type { AccountProfile, AffectedTrade, AnalysisRun, ImportPreview, ImportResult, ImportSummary, PortfolioHolding, PortfolioSummary, TradeAnalysis, TradeHistory } from './contracts'
 import { STRATEGY_CATALOG } from './strategy_catalog'
 import { pollAnalysisRun } from './analysis_polling'
+import { formatActivityTime } from './activity_time'
 
 type Page = 'overview' | 'portfolio' | 'analyze' | 'trades' | 'strategies' | 'insights' | 'profile' | 'account'
 type Trade = AffectedTrade & { analyzed?: boolean; score?: number | null; quantity?: number | null; entry_price?: number | null; exit_price?: number | null; realized_pnl?: number | null; return_percent?: number | null }
@@ -161,11 +162,6 @@ function accountResultView(account: AccountProfile) {
 function formatDate(value: string | null | undefined) {
   if (!value) return '—'
   return new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', year: 'numeric' }).format(new Date(value))
-}
-
-function formatActivityTime(value: string | undefined) {
-  if (!value) return 'Imported'
-  return new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }).format(new Date(value))
 }
 
 function scoreTone(score: number | null | undefined) {
