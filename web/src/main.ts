@@ -4,6 +4,7 @@ import type { AccountProfile, AffectedTrade, AnalysisRun, ImportPreview, ImportR
 import { STRATEGY_CATALOG } from './strategy_catalog'
 import { pollAnalysisRun } from './analysis_polling'
 import { formatActivityTime } from './activity_time'
+import { avatarFileError } from './avatar'
 
 type Page = 'overview' | 'portfolio' | 'analyze' | 'trades' | 'strategies' | 'insights' | 'profile' | 'account'
 type Trade = AffectedTrade & { analyzed?: boolean; score?: number | null; quantity?: number | null; entry_price?: number | null; exit_price?: number | null; realized_pnl?: number | null; return_percent?: number | null }
@@ -438,8 +439,25 @@ function bindEvents() {
   mount.querySelector<HTMLInputElement>('#avatar-file')?.addEventListener('change', (event) => {
     const file = (event.target as HTMLInputElement).files?.[0]
     if (!file) return
+    const issue = avatarFileError(file)
+    if (issue) {
+      setNotice(issue, 'error')
+      return
+    }
+    const previous = state.profile.avatar
     const reader = new FileReader()
-    reader.addEventListener('load', () => { state.profile.avatar = String(reader.result ?? ''); persistProfile(); render(); setNotice('Profile picture saved on this browser.', 'success') })
+    reader.addEventListener('load', () => {
+      try {
+        state.profile.avatar = String(reader.result ?? '')
+        persistProfile()
+        render()
+        setNotice('Profile picture saved on this browser.', 'success')
+      } catch {
+        state.profile.avatar = previous
+        setNotice('Profile picture could not be saved on this browser.', 'error')
+      }
+    })
+    reader.addEventListener('error', () => setNotice('Profile picture could not be read.', 'error'))
     reader.readAsDataURL(file)
   })
   mount.querySelector<HTMLFormElement>('#profile-form')?.addEventListener('submit', (event) => {
