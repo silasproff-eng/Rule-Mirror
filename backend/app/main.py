@@ -39,6 +39,8 @@ def create_app(web_dist: Path | None = None, environment: str | None = None) -> 
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
         response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+        if request.url.path.startswith("/api/"):
+            response.headers["Cache-Control"] = "no-store"
         return response
 
     @application.get("/health")
