@@ -151,3 +151,34 @@ def test_ragged_and_extra_rows_are_structured():
     with pytest.raises(ImportValidationError) as overflow:
         preview(extra, 1000, 10)
     assert overflow.value.code == "extra_columns"
+
+
+def test_execution_field_length_is_bounded_with_row_and_field():
+    symbol = "A" * 257
+    data = f"Symbol,Side,Quantity,Price,Execution Time\n{symbol},Buy,1,10,2026-08-05T14:00:00Z\n".encode()
+    mapping = {"symbol": "Symbol", "side": "Side", "quantity": "Quantity", "price": "Price", "executed_at": "Execution Time"}
+    with pytest.raises(ImportValidationError) as value:
+        parse_executions(data, mapping, None, 100_000, 10)
+    assert value.value.code == "field_too_long"
+    assert value.value.field == "symbol"
+    assert value.value.row == 2
+
+
+def test_holding_field_length_is_bounded_with_row_and_field():
+    data = ("Symbol,Description,Qty (Quantity)\n" + "NVDA," + "x" * 257 + ",1\n").encode()
+    with pytest.raises(ImportValidationError) as value:
+        parse_holdings(data, "holdings.csv", 100_000, 10)
+    assert value.value.code == "field_too_long"
+    assert value.value.field == "description"
+    assert value.value.row == 2
+
+
+def test_schema_aligned_symbol_limit_accepts_32_and_rejects_33():
+    mapping = {"symbol": "Symbol", "side": "Side", "quantity": "Quantity", "price": "Price", "executed_at": "Execution Time"}
+    valid = ("Symbol,Side,Quantity,Price,Execution Time\n" + "A" * 32 + ",Buy,1,10,2026-08-05T14:00:00Z\n").encode()
+    assert len(parse_executions(valid, mapping, None, 100_000, 10)) == 1
+    invalid = ("Symbol,Side,Quantity,Price,Execution Time\n" + "A" * 33 + ",Buy,1,10,2026-08-05T14:00:00Z\n").encode()
+    with pytest.raises(ImportValidationError) as value:
+        parse_executions(invalid, mapping, None, 100_000, 10)
+    assert value.value.code == "field_too_long"
+    assert value.value.field == "symbol"

@@ -10,7 +10,10 @@ from app.imports.csv_parser import (
     normalized_header,
     parse_decimal,
     tabular_csv,
+    validate_field_length,
 )
+
+HOLDING_FIELD_LIMITS = {"symbol": 32, "description": 240, "account_reference": 128, "asset_type": 40}
 
 ALIASES = {
     "symbol": {"symbol", "ticker", "security symbol"},
@@ -73,6 +76,13 @@ def parse_holdings(data: bytes, filename: str | None, max_bytes: int, max_rows: 
             raise ImportValidationError("too_many_rows", "CSV exceeds the row limit")
         if None in row:
             raise ImportValidationError("extra_columns", "Row contains more values than the header", row=row_number)
+        for field, column in mapping.items():
+            value = (row.get(column) or "").strip()
+            limit = HOLDING_FIELD_LIMITS.get(field)
+            if limit is not None and len(value) > limit:
+                raise ImportValidationError("field_too_long", f"{field} exceeds the {limit}-character limit", field, row_number)
+            if limit is None:
+                validate_field_length(value, field, row_number)
         symbol = (row.get(mapping["symbol"]) or "").strip().upper()
         if not symbol or symbol in {"CASH", "USD"}:
             continue

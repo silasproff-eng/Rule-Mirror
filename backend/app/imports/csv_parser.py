@@ -21,6 +21,14 @@ ALIASES = {
     "asset_type": {"asset type", "asset", "security type"},
 }
 REQUIRED = {"symbol", "side", "quantity", "price", "executed_at"}
+FIELD_LIMITS = {
+    "symbol": 32,
+    "side": 8,
+    "account_reference": 128,
+    "asset_type": 20,
+    "execution_id": 160,
+}
+DEFAULT_FIELD_LENGTH = 256
 SCHWAB_ORDER_STATUS = {
     "symbol",
     "status",
@@ -208,6 +216,13 @@ def required_value(row: dict[str, str | None], mapping: dict[str, str], key: str
     return value.strip()
 
 
+def validate_field_length(value: str, field: str, row: int | None = None) -> str:
+    limit = FIELD_LIMITS.get(field, DEFAULT_FIELD_LENGTH)
+    if len(value) > limit:
+        raise ImportValidationError("field_too_long", f"{field} exceeds the {limit}-character limit", field, row)
+    return value
+
+
 def parse_decimal(value: str) -> Decimal:
     cleaned = value.strip()
     parenthesized = cleaned.startswith("(") and cleaned.endswith(")")
@@ -240,6 +255,8 @@ def parse_executions(data: bytes, mapping: dict[str, str], timezone_name: str | 
             raise ImportValidationError("extra_columns", "Row contains more values than the header", row=row_number)
         if not any((value or "").strip() for value in row.values()):
             continue
+        for field, column in mapping.items():
+            validate_field_length((row.get(column) or "").strip(), field, row_number)
         raw_status = (row.get("Status", "") or row.get("status", "") or "").strip().lower()
         if is_schwab_order_status(headers) and raw_status != "filled":
             continue
