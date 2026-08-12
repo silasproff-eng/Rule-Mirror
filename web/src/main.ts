@@ -357,6 +357,10 @@ function bindEvents() {
     const portfolioFoot = mount.querySelector<HTMLElement>('.profile-metrics .metric-card .metric-foot')
     if (portfolioFoot && !portfolioFoot.textContent?.includes('synced')) portfolioFoot.textContent += ` · synced ${formatActivityTime(state.portfolioImportedAt)}`
   }
+  if (state.page === 'trades' && api.lastTradesWasLimited) {
+    const content = mount.querySelector<HTMLElement>('.content')
+    if (content && !content.querySelector('.trades-limit-notice')) content.insertAdjacentHTML('afterbegin', '<div class="notice notice-info trades-limit-notice">Showing the 200 most recent trades. Refine your imports to review a smaller set.</div>')
+  }
   const sidebarHead = mount.querySelector('.sidebar-head')
   if (sidebarHead && !sidebarHead.querySelector('rule-mirror-mascot')) {
     const mascot = document.createElement('rule-mirror-mascot')

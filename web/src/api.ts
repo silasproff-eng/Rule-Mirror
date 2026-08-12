@@ -35,6 +35,7 @@ type ErrorEnvelope = {
 
 export class LunaApiClient {
   lastSearchWasLimited = false
+  lastTradesWasLimited = false
   constructor(
     private readonly fetcher: typeof fetch = globalThis.fetch.bind(globalThis),
     private readonly timeoutMs = DEFAULT_REQUEST_TIMEOUT_MS,
@@ -80,6 +81,7 @@ export class LunaApiClient {
   }
 
   tradeHistory(accessToken: string): Promise<TradeHistory[]> {
+    this.lastTradesWasLimited = false
     return this.authorized('/trades', accessToken)
   }
 
@@ -203,6 +205,7 @@ export class LunaApiClient {
       )
     }
     if (path.startsWith('/accounts/search')) this.lastSearchWasLimited = response.headers.get('X-Result-Limit') === '20'
+    if (path === '/trades') this.lastTradesWasLimited = response.headers.get('X-Result-Limit') === '200'
     return body as T
   }
 }

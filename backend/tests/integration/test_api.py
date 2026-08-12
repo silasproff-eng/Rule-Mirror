@@ -425,10 +425,10 @@ def test_trade_history_bulk_loads_current_revision_details(tmp_path):
 
         event.listen(session.bind, "before_cursor_execute", record_statement)
         try:
-            history = trade_history(user_id=user_id, session=session)
+            history_response = trade_history(user_id=user_id, session=session)
         finally:
             event.remove(session.bind, "before_cursor_execute", record_statement)
-    assert len(history) == 2
+    assert len(json.loads(history_response.body)) == 2
     assert len(statements) == 5
     app.dependency_overrides.clear()
 

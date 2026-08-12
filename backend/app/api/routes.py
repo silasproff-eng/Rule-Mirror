@@ -473,7 +473,8 @@ def import_history(user_id: str = Depends(current_user_id), session: Session = D
 
 @router.get("/trades")
 def trade_history(user_id: str = Depends(current_user_id), session: Session = Depends(database)):
-    trades = session.scalars(select(Trade).where(Trade.user_id == user_id, Trade.active.is_(True)).order_by(Trade.opened_at.desc()).limit(200)).all()
+    all_trades = session.scalars(select(Trade).where(Trade.user_id == user_id, Trade.active.is_(True)).order_by(Trade.opened_at.desc())).all()
+    trades = all_trades[:200]
     trade_ids = [trade.id for trade in trades]
     analyses = session.execute(select(TradeAnalysis, AnalysisRun.trade_revision_id).join(AnalysisRun, TradeAnalysis.run_id == AnalysisRun.id).where(TradeAnalysis.trade_id.in_(trade_ids)).order_by(TradeAnalysis.id.desc())).all() if trade_ids else []
     latest: dict[str, TradeAnalysis] = {}
@@ -511,7 +512,10 @@ def trade_history(user_id: str = Depends(current_user_id), session: Session = De
         realized_pnl = realized if trade.closed_at and matched and entry_value else None
         return_percent = (realized_pnl / entry_value * Decimal("100")) if realized_pnl is not None else None
         result.append({"trade_id": trade.id, "trade_revision_id": trade.current_revision_id, "analysis_eligible": trade.closed_at is not None, "symbol": trade.symbol, "direction": trade.direction, "opened_at": utc_value(trade.opened_at).isoformat(), "closed_at": utc_value(trade.closed_at).isoformat() if trade.closed_at else None, "analyzed": trade.id in latest, "score": latest[trade.id].score if trade.id in latest else None, "quantity": float(matched), "entry_price": float(entry_value / matched) if matched else None, "exit_price": float(exit_value / matched) if matched and exit_value else None, "realized_pnl": float(realized_pnl) if realized_pnl is not None else None, "fees": float(fees + commission), "return_percent": float(return_percent) if return_percent is not None else None})
-    return result
+    response = JSONResponse(result)
+    if len(all_trades) > 200:
+        response.headers["X-Result-Limit"] = "200"
+    return response
 
 
 @router.delete("/trades/{trade_id}", status_code=status.HTTP_204_NO_CONTENT)
