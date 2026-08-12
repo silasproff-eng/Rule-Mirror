@@ -75,6 +75,7 @@ const state: {
 
 let navTrigger: HTMLButtonElement | null = null
 let refreshPromise: Promise<Tokens> | null = null
+let accountSearchGeneration = 0
 
 function readTokens(): Tokens | null {
   const raw = sessionStorage.getItem('rulemirror.tokens')
@@ -686,20 +687,25 @@ async function eraseTrade(tradeId: string) {
 
 async function searchAccounts(query: string) {
   if (!state.tokens) return
-  if (query.length < 2) {
+  const generation = ++accountSearchGeneration
+  const normalized = query.trim()
+  if (normalized.length < 2) {
     state.accountResults = []
     const results = mount.querySelector<HTMLElement>('#account-results')
     if (results) results.innerHTML = ''
     return
   }
   try {
-    state.accountResults = await withAuth((accessToken) => api.searchAccounts(query, accessToken))
+    const nextResults = await withAuth((accessToken) => api.searchAccounts(normalized, accessToken))
+    if (generation !== accountSearchGeneration || state.accountSearch.trim() !== normalized) return
+    state.accountResults = nextResults
     const results = mount.querySelector<HTMLElement>('#account-results')
     if (results) {
       results.innerHTML = state.accountResults.map(accountResultView).join('') || '<div class="account-result-empty">No public usernames found.</div>'
       results.querySelectorAll<HTMLButtonElement>('[data-account-username]').forEach((button) => button.addEventListener('click', () => void openAccountProfile(button.dataset.accountUsername ?? '')))
     }
   } catch (error) {
+    if (generation !== accountSearchGeneration || state.accountSearch.trim() !== normalized) return
     state.accountResults = []
     setNotice(errorMessage(error), 'error')
   }
