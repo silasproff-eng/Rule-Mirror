@@ -240,6 +240,49 @@ def test_public_profile_search_includes_identity_and_metrics(tmp_path):
     app.dependency_overrides.clear()
 
 
+def test_account_search_normalizes_case_and_unicode_whitespace_and_rejects_short_queries(tmp_path):
+    client, _ = client_for(tmp_path)
+    tokens = register(client, "search-policy@example.com")
+    headers = authorization(tokens)
+    assert client.put("/api/v1/account/profile", json={"display_name": "Quiet Workspace"}, headers=headers).status_code == 200
+    assert client.put("/api/v1/account/public-profile?enabled=true", headers=headers).status_code == 200
+    normalized = client.get("/api/v1/accounts/search?q=%20%20quiet\u00a0workspace%20", headers=headers)
+    assert normalized.status_code == 200
+    assert normalized.json()[0]["display_name"] == "Quiet Workspace"
+    short = client.get("/api/v1/accounts/search?q=%20", headers=headers)
+    assert short.status_code == 200
+    assert short.json() == []
+    app.dependency_overrides.clear()
+
+
+def test_account_search_matches_repeated_whitespace_and_unicode_casefold(tmp_path):
+    client, _ = client_for(tmp_path)
+    tokens = register(client, "unicode-search@example.com")
+    headers = authorization(tokens)
+    assert client.put("/api/v1/account/profile", json={"display_name": "Ångström  ßpace"}, headers=headers).status_code == 200
+    assert client.put("/api/v1/account/public-profile?enabled=true", headers=headers).status_code == 200
+    result = client.get("/api/v1/accounts/search?q=ångström\u00a0ssPACE", headers=headers)
+    assert result.status_code == 200
+    assert result.json()[0]["display_name"] == "Ångström  ßpace"
+    app.dependency_overrides.clear()
+
+
+def test_account_search_does_not_miss_match_after_many_nonmatching_users(tmp_path):
+    client, factory = client_for(tmp_path)
+    tokens = register(client, "target-search@example.com")
+    headers = authorization(tokens)
+    for index in range(501):
+        extra = register(client, f"noise-{index}@example.com")
+        client.put("/api/v1/account/profile", json={"display_name": f"Noise {index}"}, headers=authorization(extra))
+        client.put("/api/v1/account/public-profile?enabled=true", headers=authorization(extra))
+    assert client.put("/api/v1/account/profile", json={"display_name": "Needle Name"}, headers=headers).status_code == 200
+    assert client.put("/api/v1/account/public-profile?enabled=true", headers=headers).status_code == 200
+    result = client.get("/api/v1/accounts/search?q=needle", headers=headers)
+    assert result.status_code == 200
+    assert [item["display_name"] for item in result.json()] == ["Needle Name"]
+    app.dependency_overrides.clear()
+
+
 def test_profile_metrics_use_latest_analysis_per_current_revision(tmp_path):
     client, factory = client_for(tmp_path)
     tokens = register(client, "metrics-dedupe@example.com")

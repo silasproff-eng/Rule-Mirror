@@ -370,11 +370,12 @@ def portfolio(user_id: str = Depends(current_user_id), session: Session = Depend
 
 @router.get("/accounts/search")
 def search_accounts(q: str = "", user_id: str = Depends(current_user_id), session: Session = Depends(database)):
-    query = q.strip().lower()
+    query = " ".join(q.split()).casefold()
     if len(query) < 2:
         return []
-    users = session.scalars(select(User).where(or_(User.id == user_id, User.public_profile.is_(True)), or_(func.lower(User.public_handle).like(f"%{query}%"), func.lower(User.display_name).like(f"%{query}%"))).order_by(User.public_handle).limit(20)).all()
-    return [public_profile_payload(session, user) for user in users]
+    candidates = session.scalars(select(User).where(or_(User.id == user_id, User.public_profile.is_(True))).order_by(User.public_handle)).all()
+    matches = [user for user in candidates if query in " ".join((user.public_handle or "").split()).casefold() or query in " ".join((user.display_name or "").split()).casefold()][:20]
+    return [public_profile_payload(session, user) for user in matches]
 
 
 @router.get("/accounts/{username}")
