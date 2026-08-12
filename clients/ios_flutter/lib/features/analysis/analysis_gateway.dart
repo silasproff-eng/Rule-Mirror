@@ -153,6 +153,7 @@ class AffectedTrade {
 }
 
 abstract class AnalysisGateway {
+  bool get lastSearchWasLimited;
   Future<void> healthCheck();
   Future<void> register(String email, String password);
   Future<void> login(String email, String password);
@@ -178,6 +179,8 @@ class HttpAnalysisGateway implements AnalysisGateway {
   final http.Client client;
   final void Function()? onAuthenticationExpired;
   String? accessToken;
+  @override
+  bool lastSearchWasLimited = false;
   String? refreshToken;
   String? accountEmail;
   String? lastTradeId;
@@ -335,9 +338,11 @@ class HttpAnalysisGateway implements AnalysisGateway {
   @override
   Future<List<AccountProfile>> searchAccounts(String query) async =>
       _normalize(() async {
+        lastSearchWasLimited = false;
         final response = await _authenticated((headers) => client.get(
             _uri('/accounts/search?q=${Uri.encodeQueryComponent(query)}'),
             headers: headers));
+        lastSearchWasLimited = response.headers['x-result-limit'] == '20';
         final decoded = _decodeList(response);
         return decoded
             .map(

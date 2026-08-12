@@ -16,6 +16,7 @@ from fastapi import (
     UploadFile,
     status,
 )
+from fastapi.responses import JSONResponse
 from sqlalchemy import delete, func, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
@@ -374,8 +375,13 @@ def search_accounts(q: str = "", user_id: str = Depends(current_user_id), sessio
     if len(query) < 2:
         return []
     candidates = session.scalars(select(User).where(or_(User.id == user_id, User.public_profile.is_(True))).order_by(User.public_handle)).all()
-    matches = [user for user in candidates if query in " ".join((user.public_handle or "").split()).casefold() or query in " ".join((user.display_name or "").split()).casefold()][:20]
-    return [public_profile_payload(session, user) for user in matches]
+    all_matches = [user for user in candidates if query in " ".join((user.public_handle or "").split()).casefold() or query in " ".join((user.display_name or "").split()).casefold()]
+    matches = all_matches[:20]
+    payload = [public_profile_payload(session, user) for user in matches]
+    response = JSONResponse(payload)
+    if len(all_matches) > 20:
+        response.headers["X-Result-Limit"] = "20"
+    return response
 
 
 @router.get("/accounts/{username}")

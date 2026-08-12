@@ -596,17 +596,20 @@ class _SearchTabState extends State<_SearchTab> {
               if (snapshot.hasError) {
                 return const Text('Search is unavailable right now.');
               }
-              return Column(
-                  children: snapshot.data!
-                      .map((account) => ListTile(
-                          onTap: () => _showPublicProfile(context, account),
-                          leading:
-                              const CircleAvatar(child: Icon(Icons.person)),
-                          title: Text(account.displayName ?? account.username),
-                          subtitle: Text(account.username),
-                          trailing: Text(
-                              account.publicProfile ? 'Public' : 'Private')))
-                      .toList());
+              return Column(children: [
+                if (widget.gateway.lastSearchWasLimited)
+                  const Padding(
+                      padding: EdgeInsets.only(bottom: 8),
+                      child: Text(
+                          'Showing the first 20 matches. Refine your search to see more.')),
+                ...snapshot.data!.map((account) => ListTile(
+                    onTap: () => _showPublicProfile(context, account),
+                    leading: const CircleAvatar(child: Icon(Icons.person)),
+                    title: Text(account.displayName ?? account.username),
+                    subtitle: Text(account.username),
+                    trailing:
+                        Text(account.publicProfile ? 'Public' : 'Private'))),
+              ]);
             }),
       const SizedBox(height: 24),
       OutlinedButton.icon(

@@ -4,6 +4,8 @@ import 'package:strategy_audit_app/features/analysis/analysis_gateway.dart';
 import 'package:strategy_audit_app/features/analysis/analysis_models.dart';
 
 class FakeGateway implements AnalysisGateway {
+  @override
+  bool lastSearchWasLimited = false;
   FakeGateway(
       {AnalysisResult? result,
       this.previewFailure,

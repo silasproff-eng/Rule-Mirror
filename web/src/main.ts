@@ -702,6 +702,7 @@ async function searchAccounts(query: string) {
     const results = mount.querySelector<HTMLElement>('#account-results')
     if (results) {
       results.innerHTML = state.accountResults.map(accountResultView).join('') || '<div class="account-result-empty">No public usernames found.</div>'
+      if (api.lastSearchWasLimited) results.insertAdjacentHTML('afterbegin', '<div class="account-result-empty">Showing the first 20 matches. Refine your search to see more.</div>')
       results.querySelectorAll<HTMLButtonElement>('[data-account-username]').forEach((button) => button.addEventListener('click', () => void openAccountProfile(button.dataset.accountUsername ?? '')))
     }
   } catch (error) {

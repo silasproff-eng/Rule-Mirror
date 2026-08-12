@@ -34,6 +34,7 @@ type ErrorEnvelope = {
 }
 
 export class LunaApiClient {
+  lastSearchWasLimited = false
   constructor(
     private readonly fetcher: typeof fetch = globalThis.fetch.bind(globalThis),
     private readonly timeoutMs = DEFAULT_REQUEST_TIMEOUT_MS,
@@ -87,6 +88,7 @@ export class LunaApiClient {
   }
 
   searchAccounts(query: string, accessToken: string): Promise<AccountProfile[]> {
+    this.lastSearchWasLimited = false
     return this.authorized(`/accounts/search?q=${encodeURIComponent(query)}`, accessToken)
   }
 
@@ -200,6 +202,7 @@ export class LunaApiClient {
         response.status,
       )
     }
+    if (path.startsWith('/accounts/search')) this.lastSearchWasLimited = response.headers.get('X-Result-Limit') === '20'
     return body as T
   }
 }

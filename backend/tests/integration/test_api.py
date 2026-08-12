@@ -283,6 +283,24 @@ def test_account_search_does_not_miss_match_after_many_nonmatching_users(tmp_pat
     app.dependency_overrides.clear()
 
 
+def test_account_search_result_limit_header_only_when_truncated(tmp_path):
+    client, _ = client_for(tmp_path)
+    tokens = register(client, "limit-search@example.com")
+    headers = authorization(tokens)
+    for index in range(21):
+        extra = register(client, f"limit-{index}@example.com")
+        client.put("/api/v1/account/profile", json={"display_name": f"Limit Match {index}"}, headers=authorization(extra))
+        client.put("/api/v1/account/public-profile?enabled=true", headers=authorization(extra))
+    truncated = client.get("/api/v1/accounts/search?q=limit%20match", headers=headers)
+    assert len(truncated.json()) == 20
+    assert truncated.headers["x-result-limit"] == "20"
+    own = client.get("/api/v1/account/profile", headers=headers).json()
+    single = client.get(f"/api/v1/accounts/search?q={own['username']}", headers=headers)
+    assert len(single.json()) == 1
+    assert "x-result-limit" not in single.headers
+    app.dependency_overrides.clear()
+
+
 def test_profile_metrics_use_latest_analysis_per_current_revision(tmp_path):
     client, factory = client_for(tmp_path)
     tokens = register(client, "metrics-dedupe@example.com")
