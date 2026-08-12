@@ -48,6 +48,15 @@ async def test_timeout_is_typed():
 
 
 @pytest.mark.asyncio
+async def test_connection_failure_is_typed():
+    def unavailable(request):
+        raise httpx.ConnectError("offline", request=request)
+    value = provider(unavailable)
+    with pytest.raises(MarketDataError, match="could not be reached"):
+        await value.get_bars("NVDA", datetime.now(UTC), datetime.now(UTC), "1min")
+
+
+@pytest.mark.asyncio
 async def test_regular_session_is_resolved_in_eastern_time():
     value = provider(lambda request: httpx.Response(200, json={}))
     session = await value.get_session("NVDA", datetime(2026, 8, 5, 14, 0, tzinfo=UTC))

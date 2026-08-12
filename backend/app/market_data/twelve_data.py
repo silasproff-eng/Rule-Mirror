@@ -35,6 +35,8 @@ class TwelveDataProvider(MarketDataProvider):
                     response = await client.get(f"{self.base_url}{path}", params=values, timeout=self.timeout)
         except httpx.TimeoutException as error:
             raise MarketDataTimeout("Market data request timed out") from error
+        except httpx.RequestError as error:
+            raise MarketDataError("Market data provider could not be reached") from error
         if response.status_code == 429:
             raise MarketDataRateLimited("Market data rate limit reached")
         if response.status_code >= 400:
