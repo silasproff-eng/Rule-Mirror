@@ -361,6 +361,10 @@ function bindEvents() {
     const content = mount.querySelector<HTMLElement>('.content')
     if (content && !content.querySelector('.trades-limit-notice')) content.insertAdjacentHTML('afterbegin', '<div class="notice notice-info trades-limit-notice">Showing the 200 most recent trades. Refine your imports to review a smaller set.</div>')
   }
+  if (state.page === 'overview' && api.lastImportsWasLimited) {
+    const content = mount.querySelector<HTMLElement>('.content')
+    if (content && !content.querySelector('.imports-limit-notice')) content.insertAdjacentHTML('afterbegin', '<div class="notice notice-info imports-limit-notice">Showing the 20 most recent imports.</div>')
+  }
   const sidebarHead = mount.querySelector('.sidebar-head')
   if (sidebarHead && !sidebarHead.querySelector('rule-mirror-mascot')) {
     const mascot = document.createElement('rule-mirror-mascot')

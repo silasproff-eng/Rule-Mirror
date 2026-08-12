@@ -467,8 +467,12 @@ def import_summary(batch_id: str, user_id: str = Depends(current_user_id), sessi
 
 @router.get("/imports")
 def import_history(user_id: str = Depends(current_user_id), session: Session = Depends(database)):
-    batches = session.scalars(select(ImportBatch).where(ImportBatch.user_id == user_id).order_by(ImportBatch.created_at.desc()).limit(20)).all()
-    return [{"id": batch.id, "display_name": batch.display_name, "status": batch.status, "accepted_execution_count": batch.execution_count, "affected_trade_count": batch.trade_count, "duplicate_count": batch.duplicate_count, "error_count": batch.error_count, "created_at": utc_value(batch.created_at).isoformat()} for batch in batches]
+    all_batches = session.scalars(select(ImportBatch).where(ImportBatch.user_id == user_id).order_by(ImportBatch.created_at.desc())).all()
+    batches = all_batches[:20]
+    response = JSONResponse([{"id": batch.id, "display_name": batch.display_name, "status": batch.status, "accepted_execution_count": batch.execution_count, "affected_trade_count": batch.trade_count, "duplicate_count": batch.duplicate_count, "error_count": batch.error_count, "created_at": utc_value(batch.created_at).isoformat()} for batch in batches])
+    if len(all_batches) > 20:
+        response.headers["X-Result-Limit"] = "20"
+    return response
 
 
 @router.get("/trades")
