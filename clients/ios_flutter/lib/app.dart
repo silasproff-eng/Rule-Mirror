@@ -921,8 +921,13 @@ class _DataTabState extends State<_DataTab> {
                       const SizedBox(height: 16),
                       if (widget.title == 'Trades' &&
                           widget.gateway.lastTradesWasLimited)
-                        const Text(
-                            'Showing the 200 most recent trades. Refine your imports to review more precisely.'),
+                        Semantics(
+                            liveRegion: true,
+                            container: true,
+                            label:
+                                'Trade history is limited to the 200 most recent trades. Refine your imports to review more precisely.',
+                            child: Text(
+                                'Showing the 200 most recent trades. Refine your imports to review more precisely.')),
                       if (value.isEmpty)
                         const Card(
                             child: Padding(
