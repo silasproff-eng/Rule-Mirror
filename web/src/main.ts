@@ -354,7 +354,23 @@ function render() {
 
 function bindEvents() {
   const busyPanel = mount.querySelector<HTMLElement>('.import-panel')
-  if (busyPanel) busyPanel.setAttribute('aria-busy', state.busy ? 'true' : 'false')
+  if (busyPanel) {
+    busyPanel.setAttribute('aria-busy', state.busy ? 'true' : 'false')
+    let analysisStatus = busyPanel.querySelector<HTMLElement>('[data-analysis-status]')
+    if (state.busy === 'analysis') {
+      if (!analysisStatus) {
+        analysisStatus = document.createElement('div')
+        analysisStatus.dataset.analysisStatus = 'true'
+        analysisStatus.className = 'sr-only'
+        analysisStatus.setAttribute('role', 'status')
+        analysisStatus.setAttribute('aria-live', 'polite')
+        busyPanel.prepend(analysisStatus)
+      }
+      analysisStatus.textContent = 'Reviewing trade…'
+    } else if (analysisStatus) {
+      analysisStatus.textContent = state.analysis ? 'Trade review complete.' : ''
+    }
+  }
   const authForm = mount.querySelector<HTMLElement>('#auth-form')
   if (authForm) authForm.setAttribute('aria-busy', state.busy === 'auth' ? 'true' : 'false')
   const portfolioPanel = mount.querySelector<HTMLElement>('.portfolio-layout')
@@ -665,7 +681,7 @@ async function analyzeTrade(trade: Trade) {
     trade.analyzed = true
     trade.score = state.analysis.score
     state.busy = null
-    render()
+    setNotice('Trade review complete.', 'success')
   } catch (error) {
     state.busy = null
     setNotice(errorMessage(error), 'error')

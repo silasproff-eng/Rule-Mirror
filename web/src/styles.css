@@ -409,3 +409,4 @@ h3 { margin-bottom: 7px; font-size: 17px; }
   .import-foot { align-items: start; flex-direction: column; }
   .import-foot .button { width: 100%; }
 }
+:where(.sr-only){position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
