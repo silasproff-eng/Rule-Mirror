@@ -209,6 +209,31 @@ def test_public_profile_search_includes_identity_and_metrics(tmp_path):
     app.dependency_overrides.clear()
 
 
+def test_profile_metrics_use_latest_analysis_per_current_revision(tmp_path):
+    client, factory = client_for(tmp_path)
+    tokens = register(client, "metrics-dedupe@example.com")
+    headers = authorization(tokens)
+    preview_response = client.post("/api/v1/imports/preview", files={"file": ("fills.csv", FIXTURE.read_bytes(), "text/csv")}, headers=headers)
+    imported = client.post("/api/v1/imports", files={"file": ("fills.csv", FIXTURE.read_bytes(), "text/csv")}, data={"mapping": json.dumps(preview_response.json()["suggested_mapping"])}, headers=headers)
+    trade = imported.json()["candidate_trades"][0]
+    with factory() as session:
+        user = session.scalar(select(User).where(User.email == "metrics-dedupe@example.com"))
+        strategy = StrategyVersion(slug="metrics-dedupe", version=1, definition={}, created_at=datetime.now(UTC))
+        session.add(strategy)
+        session.flush()
+        for score in (40, 80):
+            run = AnalysisRun(user_id=user.id, trade_id=trade["id"], trade_revision_id=trade["trade_revision_id"], strategy_version_id=strategy.id, retry_of_run_id=None, provider="mock", engine_version="metrics-dedupe-1", status="completed", failure_code=None, created_at=datetime.now(UTC), started_at=None, finished_at=datetime.now(UTC))
+            session.add(run)
+            session.flush()
+            session.add(TradeAnalysis(run_id=run.id, trade_id=trade["id"], score=score, data_sufficiency="sufficient", feedback=[], derived_context={}))
+        session.commit()
+    profile = client.get("/api/v1/accounts/metrics-dedupe%40example.com", headers=headers)
+    assert profile.status_code == 200
+    assert profile.json()["metrics"]["discipline"] == 80
+    assert profile.json()["metrics"]["reviewed_trades"] == 1
+    app.dependency_overrides.clear()
+
+
 def test_split_file_reconstructs_against_full_execution_history(tmp_path):
     client, factory = client_for(tmp_path)
     tokens = register(client, "split@example.com")

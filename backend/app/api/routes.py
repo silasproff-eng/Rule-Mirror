@@ -163,7 +163,7 @@ def trade_metrics(session: Session, user_id: str) -> dict:
     trades = session.scalars(select(Trade).where(Trade.user_id == user_id, Trade.active.is_(True))).all()
     trade_ids = [trade.id for trade in trades]
     current_revisions = {trade.id: trade.current_revision_id for trade in trades}
-    analyses = session.execute(select(TradeAnalysis, AnalysisRun.trade_revision_id).join(AnalysisRun, TradeAnalysis.run_id == AnalysisRun.id).where(TradeAnalysis.trade_id.in_(trade_ids))).all() if trade_ids else []
+    analyses = session.execute(select(TradeAnalysis, AnalysisRun.trade_revision_id, AnalysisRun.created_at).join(AnalysisRun, TradeAnalysis.run_id == AnalysisRun.id).where(TradeAnalysis.trade_id.in_(trade_ids)).order_by(AnalysisRun.created_at.desc(), TradeAnalysis.id.desc())).all() if trade_ids else []
     closed = [trade for trade in trades if trade.closed_at]
     realized_values = []
     entry_notional = Decimal("0")
@@ -188,7 +188,11 @@ def trade_metrics(session: Session, user_id: str) -> dict:
         realized = (exit_value - entry_value) if trade.direction == "long" else (entry_value - exit_value)
         realized_values.append(realized - fees - commission)
     total_pnl = sum(realized_values, Decimal("0")) if realized_values else None
-    scores = [analysis.score for analysis, revision_id in analyses if analysis.score is not None and current_revisions.get(analysis.trade_id) == revision_id]
+    latest_scores: dict[str, int] = {}
+    for analysis, revision_id, _created_at in analyses:
+        if analysis.score is not None and current_revisions.get(analysis.trade_id) == revision_id:
+            latest_scores.setdefault(analysis.trade_id, analysis.score)
+    scores = list(latest_scores.values())
     holdings = session.scalars(select(PortfolioHolding).where(PortfolioHolding.user_id == user_id)).all()
     portfolio_values = [Decimal(value.market_value) for value in holdings if value.market_value is not None]
     portfolio_value = sum(portfolio_values, Decimal("0")) if portfolio_values else None
