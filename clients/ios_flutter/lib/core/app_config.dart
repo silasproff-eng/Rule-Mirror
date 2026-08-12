@@ -1,4 +1,5 @@
 class AppConfig {
+  static const legalLastUpdated = 'August 7, 2026';
   static const displayName = String.fromEnvironment(
     'APP_DISPLAY_NAME',
     defaultValue: 'Rule Mirror',

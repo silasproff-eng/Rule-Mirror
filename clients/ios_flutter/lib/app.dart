@@ -768,7 +768,7 @@ class _LegalPage extends StatelessWidget {
   Widget build(BuildContext context) => Scaffold(
       appBar: AppBar(title: Text(title)),
       body: ListView(padding: const EdgeInsets.all(24), children: [
-        Text('Last updated August 7, 2026',
+        Text('Last updated ${AppConfig.legalLastUpdated}',
             style: Theme.of(context).textTheme.labelMedium),
         const SizedBox(height: 20),
         ...sections.map((section) => Padding(
