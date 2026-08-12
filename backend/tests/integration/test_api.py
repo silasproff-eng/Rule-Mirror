@@ -126,6 +126,9 @@ def test_auth_refresh_revocation_preview_and_owner_scope(tmp_path):
     imports = client.get("/api/v1/imports", headers=authorization(rotated.json()))
     assert imports.status_code == 200
     assert imports.json()[0]["id"] == imported.json()["id"]
+    detail = client.get(f"/api/v1/imports/{imported.json()['id']}", headers=authorization(rotated.json()))
+    assert detail.status_code == 200
+    assert detail.json()["created_at"] == imports.json()[0]["created_at"]
     trades = client.get("/api/v1/trades", headers=authorization(rotated.json()))
     assert trades.status_code == 200
     assert trades.json()[0]["symbol"] == "NVDA"

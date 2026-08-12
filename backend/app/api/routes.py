@@ -462,7 +462,7 @@ def import_summary(batch_id: str, user_id: str = Depends(current_user_id), sessi
     batch = session.scalar(select(ImportBatch).where(ImportBatch.id == batch_id, ImportBatch.user_id == user_id))
     if not batch:
         raise HTTPException(404, detail={"code": "not_found", "message": "Import was not found"})
-    return {"id": batch.id, "display_name": batch.display_name, "status": batch.status, "accepted_execution_count": batch.execution_count, "affected_trade_count": batch.trade_count, "execution_count": batch.execution_count, "trade_count": batch.trade_count, "duplicate_count": batch.duplicate_count, "error_count": batch.error_count}
+    return {"id": batch.id, "display_name": batch.display_name, "status": batch.status, "created_at": utc_value(batch.created_at).isoformat(), "accepted_execution_count": batch.execution_count, "affected_trade_count": batch.trade_count, "execution_count": batch.execution_count, "trade_count": batch.trade_count, "duplicate_count": batch.duplicate_count, "error_count": batch.error_count}
 
 
 @router.get("/imports")
