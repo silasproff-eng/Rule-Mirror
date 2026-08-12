@@ -57,10 +57,8 @@ class PortfolioSummary {
 
 class PortfolioImportResult extends PortfolioSummary {
   const PortfolioImportResult(
-      {super.portfolioValue,
-      required super.holdings,
-      required this.importedAt});
-  final DateTime importedAt;
+      {super.portfolioValue, required super.holdings, this.importedAt});
+  final DateTime? importedAt;
   factory PortfolioImportResult.fromJson(Map<String, dynamic> value) =>
       PortfolioImportResult(
           portfolioValue: (value['portfolio_value'] as num?)?.toDouble(),
@@ -68,7 +66,9 @@ class PortfolioImportResult extends PortfolioSummary {
               .map((item) =>
                   PortfolioHolding.fromJson(item as Map<String, dynamic>))
               .toList(),
-          importedAt: DateTime.parse(value['imported_at'] as String).toUtc());
+          importedAt: value['imported_at'] is String
+              ? DateTime.parse(value['imported_at'] as String).toUtc()
+              : null);
 }
 
 class TradeHistory {

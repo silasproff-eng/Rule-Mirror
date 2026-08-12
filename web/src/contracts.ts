@@ -46,7 +46,7 @@ export type PortfolioHolding = {
   market_value: number | null
   cost_basis: number | null
   asset_type: string
-  imported_at: string
+  imported_at?: string | null
 }
 
 export type PortfolioSummary = {
@@ -58,7 +58,7 @@ export type PortfolioImportResult = PortfolioSummary & {
   created: number
   updated: number
   holding_count: number
-  imported_at: string
+  imported_at?: string | null
 }
 
 export type AffectedTrade = {

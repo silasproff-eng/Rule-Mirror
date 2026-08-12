@@ -587,7 +587,7 @@ async function importPortfolioFile() {
   try {
     const result = await withAuth((accessToken) => api.importPortfolio(state.portfolioFile as File, accessToken))
     state.portfolio = { portfolio_value: result.portfolio_value, holdings: result.holdings }
-    state.portfolioImportedAt = result.imported_at
+    state.portfolioImportedAt = result.imported_at ?? null
     state.portfolioFile = null
     state.busy = null
     render()
