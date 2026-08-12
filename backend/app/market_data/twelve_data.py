@@ -1,4 +1,4 @@
-from datetime import datetime, time, timedelta
+from datetime import UTC, datetime, time, timedelta
 from decimal import Decimal, InvalidOperation
 from zoneinfo import ZoneInfo
 
@@ -52,7 +52,12 @@ class TwelveDataProvider(MarketDataProvider):
     async def get_bars(self, instrument: str, start: datetime, end: datetime, timeframe: str) -> list[Bar]:
         payload = await self._request("/time_series", {"symbol": instrument, "interval": timeframe, "start_date": start.isoformat(), "end_date": end.isoformat(), "timezone": "UTC", "order": "ASC"})
         try:
-            return [Bar(datetime.fromisoformat(value["datetime"]).replace(tzinfo=start.tzinfo), datetime.fromisoformat(value["datetime"]).replace(tzinfo=start.tzinfo) + timedelta(minutes=1), Decimal(value["open"]), Decimal(value["high"]), Decimal(value["low"]), Decimal(value["close"]), Decimal(value["volume"])) for value in payload["values"]]
+            bars = []
+            for value in payload["values"]:
+                bar_start = datetime.fromisoformat(value["datetime"])
+                bar_start = bar_start.replace(tzinfo=UTC) if bar_start.tzinfo is None else bar_start.astimezone(UTC)
+                bars.append(Bar(bar_start, bar_start + timedelta(minutes=1), Decimal(value["open"]), Decimal(value["high"]), Decimal(value["low"]), Decimal(value["close"]), Decimal(value["volume"])))
+            return bars
         except (KeyError, TypeError, ValueError, InvalidOperation) as error:
             raise MarketDataMalformed("Market data bars were malformed") from error
 

@@ -1,4 +1,5 @@
 from datetime import UTC, datetime
+from zoneinfo import ZoneInfo
 
 import httpx
 import pytest
@@ -21,6 +22,21 @@ async def test_successful_bars_are_normalized():
     value = provider(lambda request: httpx.Response(200, json={"values": [{"datetime": "2026-08-05T14:00:00", "open": "1", "high": "2", "low": "0.5", "close": "1.5", "volume": "100"}]}))
     bars = await value.get_bars("NVDA", datetime(2026, 8, 5, tzinfo=UTC), datetime(2026, 8, 6, tzinfo=UTC), "1min")
     assert bars[0].close == 1.5
+    assert bars[0].start == datetime(2026, 8, 5, 14, 0, tzinfo=UTC)
+
+
+@pytest.mark.asyncio
+async def test_naive_provider_timestamp_is_treated_as_utc_even_for_non_utc_request():
+    value = provider(lambda request: httpx.Response(200, json={"values": [{"datetime": "2026-08-05T14:00:00", "open": "1", "high": "2", "low": "0.5", "close": "1.5", "volume": "100"}]}))
+    bars = await value.get_bars("NVDA", datetime(2026, 8, 5, 10, tzinfo=ZoneInfo("America/New_York")), datetime(2026, 8, 6, 10, tzinfo=ZoneInfo("America/New_York")), "1min")
+    assert bars[0].start == datetime(2026, 8, 5, 14, 0, tzinfo=UTC)
+
+
+@pytest.mark.asyncio
+async def test_offset_aware_provider_timestamp_is_converted_to_utc():
+    value = provider(lambda request: httpx.Response(200, json={"values": [{"datetime": "2026-08-05T10:00:00-04:00", "open": "1", "high": "2", "low": "0.5", "close": "1.5", "volume": "100"}]}))
+    bars = await value.get_bars("NVDA", datetime(2026, 8, 5, tzinfo=UTC), datetime(2026, 8, 6, tzinfo=UTC), "1min")
+    assert bars[0].start == datetime(2026, 8, 5, 14, 0, tzinfo=UTC)
 
 
 @pytest.mark.asyncio
