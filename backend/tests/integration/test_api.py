@@ -374,6 +374,25 @@ def test_recent_analysis_run_remains_reusable(tmp_path):
     app.dependency_overrides.clear()
 
 
+def test_trade_history_reports_net_return_percent_for_closed_long_short_and_open(tmp_path):
+    client, _ = client_for(tmp_path)
+    tokens = register(client, "return-percent@example.com")
+    headers = authorization(tokens)
+    data = b"Symbol,Side,Quantity,Price,Execution Time,Execution ID\nAAPL,Buy,10,100,2026-08-05T14:00:00Z,a1\nAAPL,Sell,10,110,2026-08-05T15:00:00Z,a2\nTSLA,Sell,5,200,2026-08-05T14:00:00Z,t1\nTSLA,Buy,5,180,2026-08-05T15:00:00Z,t2\nMSFT,Buy,2,50,2026-08-05T14:00:00Z,m1\n"
+    preview_response = client.post("/api/v1/imports/preview", files={"file": ("returns.csv", data, "text/csv")}, headers=headers)
+    imported = client.post("/api/v1/imports", files={"file": ("returns.csv", data, "text/csv")}, data={"mapping": json.dumps(preview_response.json()["suggested_mapping"])}, headers=headers)
+    assert imported.status_code == 201
+    history = client.get("/api/v1/trades", headers=headers)
+    values = {item["symbol"]: item for item in history.json()}
+    assert values["AAPL"]["realized_pnl"] == 100.0
+    assert values["AAPL"]["return_percent"] == 10.0
+    assert values["TSLA"]["realized_pnl"] == 100.0
+    assert values["TSLA"]["return_percent"] == 10.0
+    assert values["MSFT"]["realized_pnl"] is None
+    assert values["MSFT"]["return_percent"] is None
+    app.dependency_overrides.clear()
+
+
 def test_analysis_failure_rolls_back_partial_result_rows(tmp_path):
     client, factory = client_for(tmp_path)
     tokens = register(client, "rollback@example.com")

@@ -478,7 +478,9 @@ def trade_history(user_id: str = Depends(current_user_id), session: Session = De
                 exit_value += quantity * Decimal(execution.price)
         realized = (exit_value - entry_value) if trade.direction == "long" else (entry_value - exit_value)
         realized -= fees + commission
-        result.append({"trade_id": trade.id, "trade_revision_id": trade.current_revision_id, "analysis_eligible": trade.closed_at is not None, "symbol": trade.symbol, "direction": trade.direction, "opened_at": utc_value(trade.opened_at).isoformat(), "closed_at": utc_value(trade.closed_at).isoformat() if trade.closed_at else None, "analyzed": trade.id in latest, "score": latest[trade.id].score if trade.id in latest else None, "quantity": float(matched), "entry_price": float(entry_value / matched) if matched else None, "exit_price": float(exit_value / matched) if matched and exit_value else None, "realized_pnl": float(realized) if trade.closed_at and matched else None, "fees": float(fees + commission), "return_percent": None})
+        realized_pnl = realized if trade.closed_at and matched and entry_value else None
+        return_percent = (realized_pnl / entry_value * Decimal("100")) if realized_pnl is not None else None
+        result.append({"trade_id": trade.id, "trade_revision_id": trade.current_revision_id, "analysis_eligible": trade.closed_at is not None, "symbol": trade.symbol, "direction": trade.direction, "opened_at": utc_value(trade.opened_at).isoformat(), "closed_at": utc_value(trade.closed_at).isoformat() if trade.closed_at else None, "analyzed": trade.id in latest, "score": latest[trade.id].score if trade.id in latest else None, "quantity": float(matched), "entry_price": float(entry_value / matched) if matched else None, "exit_price": float(exit_value / matched) if matched and exit_value else None, "realized_pnl": float(realized_pnl) if realized_pnl is not None else None, "fees": float(fees + commission), "return_percent": float(return_percent) if return_percent is not None else None})
     return result
 
 
