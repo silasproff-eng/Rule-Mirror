@@ -209,11 +209,14 @@ def required_value(row: dict[str, str | None], mapping: dict[str, str], key: str
 
 
 def parse_decimal(value: str) -> Decimal:
-    cleaned = value.replace("$", "").replace(",", "").strip()
-    match = re.search(r"-?\d+(?:\.\d+)?", cleaned)
-    if not match:
+    cleaned = value.strip()
+    parenthesized = cleaned.startswith("(") and cleaned.endswith(")")
+    if parenthesized:
+        cleaned = cleaned[1:-1]
+    if not re.fullmatch(r"(?:[+-]?\$?|\$[+-]?)(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?", cleaned):
         raise InvalidOperation
-    return Decimal(match.group(0))
+    normalized = cleaned.replace("$", "").replace(",", "")
+    return Decimal(f"-{normalized}" if parenthesized else normalized)
 
 
 def parse_executions(data: bytes, mapping: dict[str, str], timezone_name: str | None, max_bytes: int, max_rows: int) -> list[NormalizedExecution]:
@@ -248,7 +251,10 @@ def parse_executions(data: bytes, mapping: dict[str, str], timezone_name: str | 
             symbol = required_value(row, mapping, "symbol").upper()
             side_raw = required_value(row, mapping, "side").lower()
             side = "buy" if side_raw in {"buy", "b", "bought"} else "sell" if side_raw in {"sell", "s", "sold"} else ""
-            quantity = parse_decimal(required_value(row, mapping, "quantity")).copy_abs()
+            quantity_value = required_value(row, mapping, "quantity")
+            if is_schwab_order_status(headers):
+                quantity_value = re.sub(r"\s+shares?$", "", quantity_value, flags=re.IGNORECASE)
+            quantity = parse_decimal(quantity_value).copy_abs()
             price = parse_decimal(required_value(row, mapping, "price"))
             executed_at = parse_timestamp(required_value(row, mapping, "executed_at"), timezone_name)
             if not symbol or not side or quantity <= 0 or price <= 0:
@@ -256,8 +262,8 @@ def parse_executions(data: bytes, mapping: dict[str, str], timezone_name: str | 
         except (KeyError, InvalidOperation, ValueError) as error:
             raise ImportValidationError("invalid_row", "Required execution value is missing or invalid", row=row_number) from error
         try:
-            commission = Decimal(optional_value(row, mapping, "commission", "0").replace("$", "") or "0")
-            fees = Decimal(optional_value(row, mapping, "fees", "0").replace("$", "") or "0")
+            commission = parse_decimal(optional_value(row, mapping, "commission", "0") or "0")
+            fees = parse_decimal(optional_value(row, mapping, "fees", "0") or "0")
         except InvalidOperation as error:
             raise ImportValidationError("invalid_optional_decimal", "Commission and fees must be numeric", "commission", row_number) from error
         account = optional_value(row, mapping, "account_reference", "default") or "default"

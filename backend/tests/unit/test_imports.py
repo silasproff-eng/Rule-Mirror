@@ -1,4 +1,4 @@
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
 import pytest
@@ -6,6 +6,7 @@ from app.imports.csv_parser import (
     ImportValidationError,
     detect_mapping,
     parse_executions,
+    parse_decimal,
     parse_timestamp,
     preview,
 )
@@ -112,6 +113,23 @@ def test_malformed_optional_values_are_structured():
         parse_executions(data, mapping, None, 1000, 10)
     assert value.value.code == "invalid_optional_decimal"
     assert value.value.row == 2
+
+
+@pytest.mark.parametrize(("raw", "expected"), [
+    ("$1,234.50", Decimal("1234.50")),
+    ("-$1,234.50", Decimal("-1234.50")),
+    ("$-1,234.50", Decimal("-1234.50")),
+    ("+42.25", Decimal("42.25")),
+    ("(1,234.50)", Decimal("-1234.50")),
+])
+def test_financial_decimal_formats_are_parsed_strictly(raw, expected):
+    assert parse_decimal(raw) == expected
+
+
+@pytest.mark.parametrize("raw", ["12 shares", "USD 12", "1,23.45", "12.3.4", "1,000x"])
+def test_financial_decimal_rejects_mixed_or_malformed_text(raw):
+    with pytest.raises(InvalidOperation):
+        parse_decimal(raw)
 
 
 def test_duplicate_mapping_is_rejected():

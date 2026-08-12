@@ -241,6 +241,20 @@ def test_non_object_mapping_is_structured_422(tmp_path):
     app.dependency_overrides.clear()
 
 
+def test_invalid_financial_text_is_rejected_without_writing_import_rows(tmp_path):
+    client, factory = client_for(tmp_path)
+    tokens = register(client, "strict-decimal@example.com")
+    data = b"Symbol,Side,Quantity,Price,Execution Time,Fees\nNVDA,Buy,1,100,2026-08-05T14:00:00Z,$1.25\nAAPL,Sell,2,200x,2026-08-05T14:01:00Z,$0.75\n"
+    preview_response = client.post("/api/v1/imports/preview", files={"file": ("mixed.csv", data, "text/csv")}, headers=authorization(tokens))
+    response = client.post("/api/v1/imports", files={"file": ("mixed.csv", data, "text/csv")}, data={"mapping": json.dumps(preview_response.json()["suggested_mapping"])}, headers=authorization(tokens))
+    assert response.status_code == 422
+    assert response.json()["detail"]["code"] == "invalid_row"
+    with factory() as session:
+        assert session.scalar(select(func.count()).select_from(ImportBatch)) == 0
+        assert session.scalar(select(func.count()).select_from(Execution)) == 0
+    app.dependency_overrides.clear()
+
+
 def test_superseded_trade_history_and_analysis_remain_queryable(tmp_path):
     client, factory = client_for(tmp_path)
     tokens = register(client, "history@example.com")
