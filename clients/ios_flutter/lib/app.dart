@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
@@ -389,6 +390,8 @@ class _SearchTabState extends State<_SearchTab> {
   AccountProfile? profile;
   bool loadingProfile = false;
   bool saving = false;
+  Timer? searchDebounce;
+  int searchGeneration = 0;
 
   @override
   void initState() {
@@ -442,6 +445,8 @@ class _SearchTabState extends State<_SearchTab> {
   }
 
   void _search() {
+    searchDebounce?.cancel();
+    searchGeneration++;
     final value = query.text.trim();
     if (value.length < 2) {
       _message('Enter at least two characters to search.');
@@ -450,8 +455,25 @@ class _SearchTabState extends State<_SearchTab> {
     setState(() => results = widget.gateway.searchAccounts(value));
   }
 
+  void _scheduleSearch(String value) {
+    searchDebounce?.cancel();
+    ++searchGeneration;
+    final normalized = value.trim();
+    if (normalized.length < 2) {
+      if (mounted) setState(() => results = null);
+      return;
+    }
+    if (mounted) setState(() => results = null);
+    searchDebounce = Timer(const Duration(milliseconds: 280), () {
+      final future = widget.gateway.searchAccounts(normalized);
+      if (mounted) setState(() => results = future);
+    });
+  }
+
   @override
   void dispose() {
+    searchDebounce?.cancel();
+    searchGeneration++;
     query.dispose();
     name.dispose();
     super.dispose();
@@ -546,6 +568,7 @@ class _SearchTabState extends State<_SearchTab> {
       TextField(
           controller: query,
           enabled: widget.authenticated,
+          onChanged: _scheduleSearch,
           textInputAction: TextInputAction.search,
           onSubmitted: (_) => _search(),
           decoration: InputDecoration(
