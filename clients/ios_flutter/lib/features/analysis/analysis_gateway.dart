@@ -296,7 +296,7 @@ class HttpAnalysisGateway implements AnalysisGateway {
 
   @override
   Future<void> deleteTrade(String tradeId) async => _normalize(() async {
-        _decode(await _authenticated((headers) =>
+        _expectNoContent(await _authenticated((headers) =>
             client.delete(_uri('/trades/$tradeId'), headers: headers)));
       });
 
@@ -321,7 +321,7 @@ class HttpAnalysisGateway implements AnalysisGateway {
     if (refreshToken == null) return;
     try {
       await _normalize(() async {
-        _decode(await client.post(_uri('/auth/logout'),
+        _expectNoContent(await client.post(_uri('/auth/logout'),
             headers: {'Content-Type': 'application/json'},
             body: jsonEncode({'refresh_token': refreshToken})));
       });
@@ -331,7 +331,7 @@ class HttpAnalysisGateway implements AnalysisGateway {
   }
 
   Future<void> deleteAccount() async {
-    await _normalize(() async => _decode(await _authenticated(
+    await _normalize(() async => _expectNoContent(await _authenticated(
         (headers) => client.delete(_uri('/account'), headers: headers))));
     _clearAuthentication();
   }
@@ -492,13 +492,20 @@ class HttpAnalysisGateway implements AnalysisGateway {
   }
 
   Map<String, dynamic> _decode(http.Response response) {
-    final decoded = jsonDecode(response.body.isEmpty ? '{}' : response.body);
+    if (response.body.trim().isEmpty) {
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        throw const GatewayError('request_failed', 'The request failed.');
+      }
+      throw const GatewayError(
+          'invalid_response', 'The service returned an unexpected response.');
+    }
+    final decoded = jsonDecode(response.body);
     if (decoded is! Map<String, dynamic>) {
       throw const GatewayError(
           'invalid_response', 'The service returned an unexpected response.');
     }
     final value = decoded;
-    if (response.statusCode >= 400) {
+    if (response.statusCode < 200 || response.statusCode >= 300) {
       final detail = value['detail'];
       if (detail is Map<String, dynamic>) {
         throw GatewayError(detail['code'] as String? ?? 'request_failed',
@@ -509,11 +516,21 @@ class HttpAnalysisGateway implements AnalysisGateway {
     return value;
   }
 
-  List<dynamic> _decodeList(http.Response response) {
-    if (response.statusCode >= 400) {
+  void _expectNoContent(http.Response response) {
+    if (response.statusCode < 200 || response.statusCode >= 300) {
       _decode(response);
     }
-    final value = jsonDecode(response.body.isEmpty ? '[]' : response.body);
+  }
+
+  List<dynamic> _decodeList(http.Response response) {
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      _decode(response);
+    }
+    if (response.body.trim().isEmpty) {
+      throw const GatewayError(
+          'invalid_response', 'The service returned an unexpected response.');
+    }
+    final value = jsonDecode(response.body);
     if (value is! List<dynamic>) {
       throw const GatewayError(
           'invalid_response', 'The service returned an unexpected response.');
