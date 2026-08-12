@@ -34,6 +34,13 @@ describe('LunaApiClient', () => {
     )
   })
 
+  it('supports the authenticated opaque-handle profile endpoint', async () => {
+    const fetcher = vi.fn(async () => new Response(JSON.stringify({ username: 'member-ab12cd34', public_profile: false, display_name: null, metrics: {} }), { status: 200 }))
+    const client = new LunaApiClient(fetcher as typeof fetch)
+    await client.ownProfile('token')
+    expect(fetcher).toHaveBeenCalledWith('/api/v1/account/profile', expect.objectContaining({ headers: expect.any(Headers), signal: expect.any(AbortSignal) }))
+  })
+
   it('handles refresh rotation and empty logout responses', async () => {
     const fetcher = vi.fn()
       .mockResolvedValueOnce(new Response(JSON.stringify({ access_token: 'new-access', refresh_token: 'new-refresh', token_type: 'bearer' }), { status: 200 }))

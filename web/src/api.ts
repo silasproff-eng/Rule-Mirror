@@ -94,6 +94,10 @@ export class LunaApiClient {
     return this.authorized(`/accounts/${encodeURIComponent(username)}`, accessToken)
   }
 
+  ownProfile(accessToken: string): Promise<AccountProfile> {
+    return this.authorized('/account/profile', accessToken)
+  }
+
   updateProfile(displayName: string, accessToken: string): Promise<AccountProfile> {
     return this.authorized('/account/profile', accessToken, {
       method: 'PUT',

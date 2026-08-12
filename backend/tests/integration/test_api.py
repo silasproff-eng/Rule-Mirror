@@ -92,6 +92,20 @@ def test_protected_routes_use_structured_auth_errors(tmp_path):
     assert valid.headers["cache-control"] == "no-store"
 
 
+def test_registration_retries_public_handle_collision(tmp_path, monkeypatch):
+    client, factory = client_for(tmp_path)
+    original = __import__('app.api.routes', fromlist=['secrets']).secrets.token_hex
+    handles = iter(["collision", "collision", "unique12"])
+    monkeypatch.setattr(__import__('app.api.routes', fromlist=['secrets']).secrets, "token_hex", lambda size: next(handles))
+    first = register(client, "collision-one@example.com")
+    second = register(client, "collision-two@example.com")
+    assert first["access_token"] and second["access_token"]
+    with factory() as session:
+        handles_in_db = session.scalars(select(User.public_handle).order_by(User.email)).all()
+    assert handles_in_db == ["member-collision", "member-unique12"]
+    monkeypatch.setattr(__import__('app.api.routes', fromlist=['secrets']).secrets, "token_hex", original)
+
+
 def test_auth_refresh_revocation_preview_and_owner_scope(tmp_path):
     client, factory = client_for(tmp_path)
     first = register(client, "first@example.com")
@@ -211,14 +225,16 @@ def test_public_profile_search_includes_identity_and_metrics(tmp_path):
     assert portfolio.status_code == 201
     enabled = client.put("/api/v1/account/public-profile?enabled=true", headers=authorization(tokens))
     assert enabled.status_code == 200
-    result = client.get("/api/v1/accounts/search?q=profile", headers=authorization(tokens))
+    result = client.get("/api/v1/accounts/search?q=silas", headers=authorization(tokens))
     assert result.status_code == 200
     account = result.json()[0]
     assert account["display_name"] == "Silas"
+    assert "email" not in account
+    assert "@" not in account["username"]
     assert "avatar_data_url" not in account
     assert account["metrics"]["portfolio_value"] == 100
     assert set(account["metrics"]) >= {"total_pnl", "win_rate", "discipline", "portfolio_value", "closed_trades", "reviewed_trades"}
-    opened = client.get("/api/v1/accounts/profile%40example.com", headers=authorization(tokens))
+    opened = client.get(f"/api/v1/accounts/{account['username']}", headers=authorization(tokens))
     assert opened.status_code == 200
     assert opened.json()["display_name"] == "Silas"
     app.dependency_overrides.clear()
@@ -242,7 +258,8 @@ def test_profile_metrics_use_latest_analysis_per_current_revision(tmp_path):
             session.flush()
             session.add(TradeAnalysis(run_id=run.id, trade_id=trade["id"], score=score, data_sufficiency="sufficient", feedback=[], derived_context={}))
         session.commit()
-    profile = client.get("/api/v1/accounts/metrics-dedupe%40example.com", headers=headers)
+    own = client.get("/api/v1/account/profile", headers=headers)
+    profile = client.get(f"/api/v1/accounts/{own.json()['username']}", headers=headers)
     assert profile.status_code == 200
     assert profile.json()["metrics"]["discipline"] == 80
     assert profile.json()["metrics"]["reviewed_trades"] == 1

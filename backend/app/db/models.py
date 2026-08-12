@@ -26,6 +26,7 @@ class User(Base):
     __tablename__ = "users"
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_value)
     email: Mapped[str] = mapped_column(String(320), unique=True, index=True)
+    public_handle: Mapped[str] = mapped_column(String(32), unique=True, index=True)
     password_hash: Mapped[str] = mapped_column(String(512))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     public_profile: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)

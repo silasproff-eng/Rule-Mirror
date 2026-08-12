@@ -48,7 +48,7 @@ class FakeGateway implements AnalysisGateway {
 
   @override
   Future<AccountProfile> profile() async => const AccountProfile(
-      username: 'test@example.com', publicProfile: false, metrics: {});
+      username: 'member-test123', publicProfile: false, metrics: {});
 
   @override
   Future<AccountProfile> updateProfile(String displayName) async => profile();

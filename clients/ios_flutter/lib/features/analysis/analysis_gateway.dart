@@ -291,13 +291,8 @@ class HttpAnalysisGateway implements AnalysisGateway {
 
   @override
   Future<AccountProfile> profile() async => _normalize(() async {
-        if (accountEmail == null) {
-          throw const GatewayError(
-              'auth_required', 'Sign in to load your profile.');
-        }
-        final value = _decode(await _authenticated((headers) => client.get(
-            _uri('/accounts/${Uri.encodeComponent(accountEmail!)}'),
-            headers: headers)));
+        final value = _decode(await _authenticated((headers) =>
+            client.get(_uri('/account/profile'), headers: headers)));
         return AccountProfile.fromJson(value);
       });
 

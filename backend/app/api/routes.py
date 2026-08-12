@@ -1,6 +1,7 @@
 import hashlib
 import json
 import re
+import secrets
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
@@ -209,8 +210,7 @@ def trade_metrics(session: Session, user_id: str) -> dict:
 
 def public_profile_payload(session: Session, user: User) -> dict:
     return {
-        "username": user.email,
-        "email": user.email,
+        "username": user.public_handle,
         "public_profile": user.public_profile,
         "display_name": user.display_name,
         "metrics": trade_metrics(session, user.id),
@@ -229,9 +229,20 @@ def register(credentials: Credentials, session: Session = Depends(database)):
     email = credentials.email.lower()
     if session.scalar(select(User).where(User.email == email)):
         raise HTTPException(409, detail={"code": "email_exists", "message": "An account already uses this email"})
-    user = User(email=email, password_hash=hash_password(credentials.password), created_at=datetime.now(UTC))
-    session.add(user)
-    session.commit()
+    user = None
+    for _ in range(5):
+        handle = f"member-{secrets.token_hex(6)}"
+        if not session.scalar(select(User.id).where(User.public_handle == handle)):
+            user = User(email=email, public_handle=handle, password_hash=hash_password(credentials.password), created_at=datetime.now(UTC))
+            session.add(user)
+            break
+    if user is None:
+        raise HTTPException(503, detail={"code": "handle_unavailable", "message": "A public handle could not be assigned. Please try again."})
+    try:
+        session.commit()
+    except IntegrityError as error:
+        session.rollback()
+        raise HTTPException(503, detail={"code": "handle_unavailable", "message": "A public handle could not be assigned. Please try again."}) from error
     return create_pair(session, user.id)
 
 
@@ -298,6 +309,14 @@ def update_profile(request: ProfileUpdate, user_id: str = Depends(current_user_i
     return public_profile_payload(session, user)
 
 
+@router.get("/account/profile")
+def own_profile(user_id: str = Depends(current_user_id), session: Session = Depends(database)):
+    user = session.get(User, user_id)
+    if not user:
+        raise HTTPException(404, detail={"code": "not_found", "message": "Account was not found"})
+    return public_profile_payload(session, user)
+
+
 @router.post("/portfolio/import", status_code=201)
 async def import_portfolio(file: UploadFile = File(), user_id: str = Depends(current_user_id), session: Session = Depends(database)):
     data = await file.read(get_settings().max_csv_bytes + 1)
@@ -354,13 +373,13 @@ def search_accounts(q: str = "", user_id: str = Depends(current_user_id), sessio
     query = q.strip().lower()
     if len(query) < 2:
         return []
-    users = session.scalars(select(User).where(func.lower(User.email).like(f"%{query}%"), or_(User.id == user_id, User.public_profile.is_(True))).order_by(User.email).limit(20)).all()
+    users = session.scalars(select(User).where(or_(User.id == user_id, User.public_profile.is_(True)), or_(func.lower(User.public_handle).like(f"%{query}%"), func.lower(User.display_name).like(f"%{query}%"))).order_by(User.public_handle).limit(20)).all()
     return [public_profile_payload(session, user) for user in users]
 
 
 @router.get("/accounts/{username}")
 def account_profile(username: str, user_id: str = Depends(current_user_id), session: Session = Depends(database)):
-    user = session.scalar(select(User).where(func.lower(User.email) == username.strip().lower()))
+    user = session.scalar(select(User).where(func.lower(User.public_handle) == username.strip().lower()))
     if not user or (user.id != user_id and not user.public_profile):
         raise HTTPException(404, detail={"code": "not_found", "message": "Profile was not found"})
     return public_profile_payload(session, user)
@@ -373,7 +392,7 @@ def set_public_profile(enabled: bool, user_id: str = Depends(current_user_id), s
         raise HTTPException(404, detail={"code": "not_found", "message": "Account was not found"})
     user.public_profile = enabled
     session.commit()
-    return {"public_profile": enabled, "username": user.email}
+    return {"public_profile": enabled, "username": user.public_handle}
 
 
 @router.post("/imports/preview")

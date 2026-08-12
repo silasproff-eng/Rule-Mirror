@@ -44,11 +44,11 @@ def assert_current_schema(database_url: str):
     user_columns = {value["name"] for value in schema.get_columns("users")}
     assert {"trade_revision_id", "retry_of_run_id", "failure_code", "started_at", "finished_at"} <= run_columns
     assert {"identity_key", "current_revision_id", "active"} <= trade_columns
-    assert {"public_profile", "display_name"} <= user_columns
+    assert {"public_profile", "display_name", "public_handle"} <= user_columns
     analysis_targets = {value["referred_table"] for value in schema.get_foreign_keys("analysis_runs")}
     assert {"users", "trades", "trade_revisions", "strategy_versions", "analysis_runs"} <= analysis_targets
     with engine.connect() as connection:
-        assert MigrationContext.configure(connection).get_current_revision() == "5e3_portfolio_holdings_repair"
+        assert MigrationContext.configure(connection).get_current_revision() == "6f1_opaque_public_handles"
     engine.dispose()
 
 

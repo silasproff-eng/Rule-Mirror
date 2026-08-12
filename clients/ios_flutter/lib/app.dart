@@ -468,7 +468,7 @@ class _SearchTabState extends State<_SearchTab> {
               ?.copyWith(fontWeight: FontWeight.w700)),
       const SizedBox(height: 8),
       const Text(
-          'Search public accounts by email and manage your workspace preferences.'),
+          'Search public handles or display names and manage your workspace preferences.'),
       const SizedBox(height: 24),
       if (!widget.authenticated)
         const Card(
@@ -549,7 +549,7 @@ class _SearchTabState extends State<_SearchTab> {
           textInputAction: TextInputAction.search,
           onSubmitted: (_) => _search(),
           decoration: InputDecoration(
-              labelText: 'Search accounts by email',
+              labelText: 'Search public handles or display names',
               prefixIcon: const Icon(Icons.search),
               suffixIcon: Padding(
                   padding: const EdgeInsets.all(7),

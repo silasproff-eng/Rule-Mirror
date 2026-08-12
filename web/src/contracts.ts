@@ -21,7 +21,6 @@ export type ImportPreview = {
 
 export type AccountProfile = {
   username: string
-  email: string
   public_profile: boolean
   display_name: string | null
   metrics: {
