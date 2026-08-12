@@ -173,6 +173,17 @@ def test_holding_field_length_is_bounded_with_row_and_field():
     assert value.value.row == 2
 
 
+@pytest.mark.parametrize("data", [
+    b"Symbol,Description,Quantity,Price\n",
+    b"Symbol,Description,Quantity,Price\nCASH,Cash,100,1\n",
+    b"Symbol,Description,Quantity,Price\nNVDA,NVIDIA,0,100\n",
+])
+def test_empty_holdings_are_rejected(data):
+    with pytest.raises(ImportValidationError) as value:
+        parse_holdings(data, "positions.csv", 100_000, 10)
+    assert value.value.code == "empty_holdings"
+
+
 def test_schema_aligned_symbol_limit_accepts_32_and_rejects_33():
     mapping = {"symbol": "Symbol", "side": "Side", "quantity": "Quantity", "price": "Price", "executed_at": "Execution Time"}
     valid = ("Symbol,Side,Quantity,Price,Execution Time\n" + "A" * 32 + ",Buy,1,10,2026-08-05T14:00:00Z\n").encode()

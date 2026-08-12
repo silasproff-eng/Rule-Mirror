@@ -100,4 +100,6 @@ def parse_holdings(data: bytes, filename: str | None, max_bytes: int, max_rows: 
         account = (row.get(mapping.get("account_reference", ""), "") or "").strip() or source
         asset_type = (row.get(mapping.get("asset_type", ""), "stock") or "stock").strip().lower()
         holdings.append(NormalizedHolding(source, account, symbol, description, quantity, price, market_value, optional_decimal(row.get(mapping.get("cost_basis", ""))), asset_type))
+    if not holdings:
+        raise ImportValidationError("empty_holdings", "The holdings export contains no usable non-cash positions")
     return holdings

@@ -187,6 +187,20 @@ def test_account_deletion_revokes_owned_data(tmp_path):
     app.dependency_overrides.clear()
 
 
+def test_empty_portfolio_import_does_not_change_existing_holdings(tmp_path):
+    client, factory = client_for(tmp_path)
+    tokens = register(client, "empty-portfolio@example.com")
+    headers = authorization(tokens)
+    valid = client.post("/api/v1/portfolio/import", files={"file": ("positions.csv", b"Symbol,Description,Quantity,Price,Market Value\nNVDA,NVIDIA CORP,1,$100,$100\n", "text/csv")}, headers=headers)
+    assert valid.status_code == 201
+    empty = client.post("/api/v1/portfolio/import", files={"file": ("positions.csv", b"Symbol,Description,Quantity,Price,Market Value\nCASH,Cash,100,$1,$100\n", "text/csv")}, headers=headers)
+    assert empty.status_code == 422
+    assert empty.json()["detail"]["code"] == "empty_holdings"
+    with factory() as session:
+        assert session.scalar(select(func.count()).select_from(PortfolioHolding)) == 1
+    app.dependency_overrides.clear()
+
+
 def test_public_profile_search_includes_identity_and_metrics(tmp_path):
     client, factory = client_for(tmp_path)
     tokens = register(client, "profile@example.com")
