@@ -676,7 +676,11 @@ async function analyzeTrade(trade: Trade) {
       setNotice('Analysis is still running. You can return to this trade and retry without starting a duplicate run.', 'info')
       return
     }
-    if (run.status !== 'completed' || !run.trade_analysis_id) throw new Error(run.failure_code || 'The analysis did not complete.')
+    if (run.status !== 'completed' || !run.trade_analysis_id) {
+      state.busy = null
+      setNotice('Trade review failed. See the error details and try again when ready.', 'error')
+      return
+    }
     state.analysis = await withAuth((accessToken) => api.tradeAnalysis(run.trade_analysis_id as string, accessToken))
     trade.analyzed = true
     trade.score = state.analysis.score
