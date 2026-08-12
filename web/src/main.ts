@@ -353,6 +353,17 @@ function render() {
 }
 
 function bindEvents() {
+  const busyPanel = mount.querySelector<HTMLElement>('.import-panel')
+  if (busyPanel) busyPanel.setAttribute('aria-busy', state.busy ? 'true' : 'false')
+  const authForm = mount.querySelector<HTMLElement>('#auth-form')
+  if (authForm) authForm.setAttribute('aria-busy', state.busy === 'auth' ? 'true' : 'false')
+  const portfolioPanel = mount.querySelector<HTMLElement>('.portfolio-layout')
+  if (portfolioPanel) portfolioPanel.setAttribute('aria-busy', state.busy === 'portfolio' ? 'true' : 'false')
+  const deleteButton = mount.querySelector<HTMLButtonElement>('#delete-account')
+  if (deleteButton) {
+    deleteButton.setAttribute('aria-busy', state.busy === 'delete' ? 'true' : 'false')
+    deleteButton.disabled = state.busy === 'delete'
+  }
   if (state.page === 'portfolio' && state.portfolioImportedAt) {
     const portfolioFoot = mount.querySelector<HTMLElement>('.profile-metrics .metric-card .metric-foot')
     if (portfolioFoot && !portfolioFoot.textContent?.includes('synced')) portfolioFoot.textContent += ` · synced ${formatActivityTime(state.portfolioImportedAt)}`
@@ -671,11 +682,16 @@ async function signOut() {
 
 async function deleteAccount() {
   if (!state.tokens || !window.confirm('Delete your RuleMirror account and all stored data?')) return
+  state.busy = 'delete'
+  render()
   try {
     await withAuth((accessToken) => api.deleteAccount(accessToken))
     localStorage.removeItem('rulemirror.profile')
+    state.busy = null
     await signOut()
   } catch (error) {
+    state.busy = null
+    render()
     setNotice(errorMessage(error), 'error')
   }
 }
