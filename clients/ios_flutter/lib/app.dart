@@ -146,6 +146,7 @@ class _LaunchShellState extends State<_LaunchShell>
                     authenticated: signedIn,
                     title: 'My portfolio',
                     load: gateway.portfolio,
+                    gateway: gateway,
                     importPortfolio: gateway.importPortfolio),
                 AnalysisScreen(
                     key: ValueKey('analysis-$signedIn'),
@@ -162,6 +163,7 @@ class _LaunchShellState extends State<_LaunchShell>
                     authenticated: signedIn,
                     title: 'Trades',
                     load: gateway.trades,
+                    gateway: gateway,
                     deleteTrade: gateway.deleteTrade),
                 _SearchTab(
                     key: ValueKey('profile-$signedIn'),
@@ -353,11 +355,13 @@ class _DataTab extends StatefulWidget {
       required this.authenticated,
       required this.title,
       required this.load,
+      required this.gateway,
       this.deleteTrade,
       this.importPortfolio});
   final bool authenticated;
   final String title;
   final Future<Object> Function() load;
+  final AnalysisGateway gateway;
   final Future<void> Function(String tradeId)? deleteTrade;
   final Future<PortfolioImportResult> Function(
       Uint8List bytes, String filename)? importPortfolio;
@@ -915,6 +919,10 @@ class _DataTabState extends State<_DataTab> {
                               .headlineMedium
                               ?.copyWith(fontWeight: FontWeight.w700)),
                       const SizedBox(height: 16),
+                      if (widget.title == 'Trades' &&
+                          widget.gateway.lastTradesWasLimited)
+                        const Text(
+                            'Showing the 200 most recent trades. Refine your imports to review more precisely.'),
                       if (value.isEmpty)
                         const Card(
                             child: Padding(

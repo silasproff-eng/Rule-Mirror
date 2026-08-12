@@ -154,6 +154,8 @@ class AffectedTrade {
 
 abstract class AnalysisGateway {
   bool get lastSearchWasLimited;
+  bool get lastTradesWasLimited;
+  bool get lastImportsWasLimited;
   Future<void> healthCheck();
   Future<void> register(String email, String password);
   Future<void> login(String email, String password);
@@ -181,6 +183,10 @@ class HttpAnalysisGateway implements AnalysisGateway {
   String? accessToken;
   @override
   bool lastSearchWasLimited = false;
+  @override
+  bool lastTradesWasLimited = false;
+  @override
+  bool lastImportsWasLimited = false;
   String? refreshToken;
   String? accountEmail;
   String? lastTradeId;
@@ -278,8 +284,10 @@ class HttpAnalysisGateway implements AnalysisGateway {
 
   @override
   Future<List<TradeHistory>> trades() async => _normalize(() async {
+        lastTradesWasLimited = false;
         final response = await _authenticated(
             (headers) => client.get(_uri('/trades'), headers: headers));
+        lastTradesWasLimited = response.headers['x-result-limit'] == '200';
         final decoded = _decodeList(response);
         return decoded
             .map((item) => TradeHistory.fromJson(item as Map<String, dynamic>))
