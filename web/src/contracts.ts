@@ -58,6 +58,7 @@ export type PortfolioImportResult = PortfolioSummary & {
   created: number
   updated: number
   holding_count: number
+  imported_at: string
 }
 
 export type AffectedTrade = {

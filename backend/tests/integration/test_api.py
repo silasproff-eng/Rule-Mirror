@@ -193,6 +193,7 @@ def test_empty_portfolio_import_does_not_change_existing_holdings(tmp_path):
     headers = authorization(tokens)
     valid = client.post("/api/v1/portfolio/import", files={"file": ("positions.csv", b"Symbol,Description,Quantity,Price,Market Value\nNVDA,NVIDIA CORP,1,$100,$100\n", "text/csv")}, headers=headers)
     assert valid.status_code == 201
+    assert valid.json()["imported_at"].endswith("+00:00")
     empty = client.post("/api/v1/portfolio/import", files={"file": ("positions.csv", b"Symbol,Description,Quantity,Price,Market Value\nCASH,Cash,100,$1,$100\n", "text/csv")}, headers=headers)
     assert empty.status_code == 422
     assert empty.json()["detail"]["code"] == "empty_holdings"

@@ -332,7 +332,7 @@ async def import_portfolio(file: UploadFile = File(), user_id: str = Depends(cur
             updated += 1
     session.commit()
     value = portfolio_summary(session, user_id)
-    return {"created": created, "updated": updated, "holding_count": len(holdings), **value}
+    return {"created": created, "updated": updated, "holding_count": len(holdings), "imported_at": imported_at.isoformat(), **value}
 
 
 def portfolio_summary(session: Session, user_id: str) -> dict:

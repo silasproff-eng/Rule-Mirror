@@ -55,6 +55,22 @@ class PortfolioSummary {
               .toList());
 }
 
+class PortfolioImportResult extends PortfolioSummary {
+  const PortfolioImportResult(
+      {super.portfolioValue,
+      required super.holdings,
+      required this.importedAt});
+  final DateTime importedAt;
+  factory PortfolioImportResult.fromJson(Map<String, dynamic> value) =>
+      PortfolioImportResult(
+          portfolioValue: (value['portfolio_value'] as num?)?.toDouble(),
+          holdings: (value['holdings'] as List<dynamic>)
+              .map((item) =>
+                  PortfolioHolding.fromJson(item as Map<String, dynamic>))
+              .toList(),
+          importedAt: DateTime.parse(value['imported_at'] as String).toUtc());
+}
+
 class TradeHistory {
   const TradeHistory(
       {required this.tradeId,
@@ -141,7 +157,8 @@ abstract class AnalysisGateway {
   Future<void> register(String email, String password);
   Future<void> login(String email, String password);
   Future<PortfolioSummary> portfolio();
-  Future<void> importPortfolio(Uint8List bytes, String filename);
+  Future<PortfolioImportResult> importPortfolio(
+      Uint8List bytes, String filename);
   Future<List<TradeHistory>> trades();
   Future<void> deleteTrade(String tradeId);
   Future<AccountProfile> profile();
@@ -242,16 +259,18 @@ class HttpAnalysisGateway implements AnalysisGateway {
       });
 
   @override
-  Future<void> importPortfolio(Uint8List bytes, String filename) async =>
+  Future<PortfolioImportResult> importPortfolio(
+          Uint8List bytes, String filename) async =>
       _normalize(() async {
-        _decode(await _authenticated((headers) async {
+        return PortfolioImportResult.fromJson(
+            _decode(await _authenticated((headers) async {
           final request =
               http.MultipartRequest('POST', _uri('/portfolio/import'))
                 ..headers.addAll(headers)
                 ..files.add(http.MultipartFile.fromBytes('file', bytes,
                     filename: filename));
           return http.Response.fromStream(await client.send(request));
-        }));
+        })));
       });
 
   @override

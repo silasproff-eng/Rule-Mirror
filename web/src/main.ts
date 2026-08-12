@@ -38,6 +38,7 @@ const state: {
   publicProfile: boolean
   publicProfilePending: boolean
   portfolio: PortfolioSummary
+  portfolioImportedAt: string | null
   portfolioFile: File | null
   tradeSearch: string
   accountSearch: string
@@ -64,6 +65,7 @@ const state: {
   publicProfile: localStorage.getItem('rulemirror.public') === 'true',
   publicProfilePending: false,
   portfolio: { portfolio_value: null, holdings: [] },
+  portfolioImportedAt: null,
   portfolioFile: null,
   tradeSearch: '',
   accountSearch: '',
@@ -350,6 +352,10 @@ function render() {
 }
 
 function bindEvents() {
+  if (state.page === 'portfolio' && state.portfolioImportedAt) {
+    const portfolioFoot = mount.querySelector<HTMLElement>('.profile-metrics .metric-card .metric-foot')
+    if (portfolioFoot && !portfolioFoot.textContent?.includes('synced')) portfolioFoot.textContent += ` · synced ${formatActivityTime(state.portfolioImportedAt)}`
+  }
   const sidebarHead = mount.querySelector('.sidebar-head')
   if (sidebarHead && !sidebarHead.querySelector('rule-mirror-mascot')) {
     const mascot = document.createElement('rule-mirror-mascot')
@@ -581,6 +587,7 @@ async function importPortfolioFile() {
   try {
     const result = await withAuth((accessToken) => api.importPortfolio(state.portfolioFile as File, accessToken))
     state.portfolio = { portfolio_value: result.portfolio_value, holdings: result.holdings }
+    state.portfolioImportedAt = result.imported_at
     state.portfolioFile = null
     state.busy = null
     render()

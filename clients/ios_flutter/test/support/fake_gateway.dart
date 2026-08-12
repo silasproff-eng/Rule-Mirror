@@ -35,7 +35,10 @@ class FakeGateway implements AnalysisGateway {
       const PortfolioSummary(holdings: []);
 
   @override
-  Future<void> importPortfolio(Uint8List bytes, String filename) async {}
+  Future<PortfolioImportResult> importPortfolio(
+          Uint8List bytes, String filename) async =>
+      PortfolioImportResult(
+          importedAt: DateTime.utc(2026, 8, 7), holdings: const []);
 
   @override
   Future<List<TradeHistory>> trades() async => const [];

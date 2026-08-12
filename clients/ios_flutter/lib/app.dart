@@ -358,8 +358,8 @@ class _DataTab extends StatefulWidget {
   final String title;
   final Future<Object> Function() load;
   final Future<void> Function(String tradeId)? deleteTrade;
-  final Future<void> Function(Uint8List bytes, String filename)?
-      importPortfolio;
+  final Future<PortfolioImportResult> Function(
+      Uint8List bytes, String filename)? importPortfolio;
 
   @override
   State<_DataTab> createState() => _DataTabState();
@@ -750,6 +750,7 @@ class _LegalPage extends StatelessWidget {
 class _DataTabState extends State<_DataTab> {
   Future<Object>? request;
   bool importingPortfolio = false;
+  DateTime? portfolioImportedAt;
 
   Future<void> _refresh() async {
     final next = widget.load();
@@ -765,7 +766,8 @@ class _DataTabState extends State<_DataTab> {
     if (file == null || file.bytes == null) return;
     setState(() => importingPortfolio = true);
     try {
-      await widget.importPortfolio!(file.bytes!, file.name);
+      final result = await widget.importPortfolio!(file.bytes!, file.name);
+      if (mounted) setState(() => portfolioImportedAt = result.importedAt);
       if (!mounted) return;
       await _refresh();
       if (mounted) {
@@ -846,9 +848,11 @@ class _DataTabState extends State<_DataTab> {
                               .headlineMedium
                               ?.copyWith(fontWeight: FontWeight.w700)),
                       const SizedBox(height: 8),
-                      Text(value.portfolioValue == null
-                          ? 'Pull down to refresh your synced holdings.'
-                          : 'Portfolio value: \$${value.portfolioValue!.toStringAsFixed(2)}'),
+                      Text(portfolioImportedAt != null
+                          ? 'Synced ${MaterialLocalizations.of(context).formatMediumDate(portfolioImportedAt!.toLocal())} at ${MaterialLocalizations.of(context).formatTimeOfDay(TimeOfDay.fromDateTime(portfolioImportedAt!.toLocal()))}'
+                          : value.portfolioValue == null
+                              ? 'Pull down to refresh your synced holdings.'
+                              : 'Portfolio value: \$${value.portfolioValue!.toStringAsFixed(2)}'),
                       const SizedBox(height: 16),
                       FilledButton.icon(
                           onPressed:
