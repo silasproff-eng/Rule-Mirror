@@ -54,6 +54,14 @@ def test_security_headers_cover_api_and_static_responses(tmp_path):
         assert response.headers["permissions-policy"] == "camera=(), microphone=(), geolocation=()"
 
 
+def test_health_contract_exposes_only_liveness_status(tmp_path):
+    dist = tmp_path / "dist"
+    dist.mkdir()
+    (dist / "index.html").write_text("<main>shell</main>")
+    response = TestClient(create_app(dist, "test")).get("/health")
+    assert response.json() == {"status": "ok"}
+
+
 def test_api_responses_are_not_cached_while_static_shell_is_unchanged(tmp_path):
     dist = tmp_path / "dist"
     dist.mkdir()

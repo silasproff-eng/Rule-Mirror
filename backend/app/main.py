@@ -49,7 +49,7 @@ def create_app(web_dist: Path | None = None, environment: str | None = None) -> 
 
     @application.get("/health")
     def health():
-        return {"status": "ok", "provider": settings.market_data_provider}
+        return {"status": "ok"}
 
     @application.exception_handler(Exception)
     async def unexpected_error(request, error):
