@@ -4,6 +4,10 @@ import type { AccountProfile, AffectedTrade, AnalysisRun, ImportPreview, ImportR
 import { STRATEGY_CATALOG } from './strategy_catalog'
 import { pollAnalysisRun } from './analysis_polling'
 import { formatActivityTime } from './activity_time'
+
+function safeStorageGet(storage: Storage, key: string) { try { return storage.getItem(key) } catch { return null } }
+function safeStorageSet(storage: Storage, key: string, value: string) { try { storage.setItem(key, value) } catch { } }
+function safeStorageRemove(storage: Storage, key: string) { try { storage.removeItem(key) } catch { } }
 import { avatarFileError } from './avatar'
 
 type Page = 'overview' | 'portfolio' | 'analyze' | 'trades' | 'strategies' | 'insights' | 'profile' | 'account'
@@ -48,7 +52,7 @@ const state: {
   page: 'overview',
   authMode: 'login',
   tokens: readTokens(),
-  email: sessionStorage.getItem('rulemirror.email') ?? '',
+  email: safeStorageGet(sessionStorage, 'rulemirror.email') ?? '',
   file: null,
   preview: null,
   mapping: {},
@@ -62,7 +66,7 @@ const state: {
   profile: readProfile(),
   hydrated: false,
   selectedStrategy: 'vwap-reclaim',
-  publicProfile: localStorage.getItem('rulemirror.public') === 'true',
+  publicProfile: safeStorageGet(localStorage, 'rulemirror.public') === 'true',
   publicProfilePending: false,
   portfolio: { portfolio_value: null, holdings: [] },
   portfolioImportedAt: null,
@@ -78,20 +82,20 @@ let refreshPromise: Promise<Tokens> | null = null
 let accountSearchGeneration = 0
 
 function readTokens(): Tokens | null {
-  const raw = sessionStorage.getItem('rulemirror.tokens')
+  const raw = safeStorageGet(sessionStorage, 'rulemirror.tokens')
   if (!raw) return null
   try {
     const value = JSON.parse(raw) as Tokens
     return value.access_token && value.refresh_token ? value : null
   } catch {
-    sessionStorage.removeItem('rulemirror.tokens')
+    safeStorageRemove(sessionStorage, 'rulemirror.tokens')
     return null
   }
 }
 
 function readProfile(): Profile {
   const fallback: Profile = { name: '', timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC', avatar: '', theme: 'light' }
-  const raw = localStorage.getItem('rulemirror.profile')
+  const raw = safeStorageGet(localStorage, 'rulemirror.profile')
   if (!raw) return fallback
   try {
     const value = JSON.parse(raw) as Partial<Profile>
@@ -113,18 +117,18 @@ function setNotice(text: string, tone: 'success' | 'error' | 'info' = 'info') {
 }
 
 function persistProfile() {
-  localStorage.setItem('rulemirror.profile', JSON.stringify(state.profile))
+  safeStorageSet(localStorage, 'rulemirror.profile', JSON.stringify(state.profile))
 }
 
 function persistTokens(tokens: Tokens | null) {
   state.tokens = tokens
-  if (tokens) sessionStorage.setItem('rulemirror.tokens', JSON.stringify(tokens))
-  else sessionStorage.removeItem('rulemirror.tokens')
+  if (tokens) safeStorageSet(sessionStorage, 'rulemirror.tokens', JSON.stringify(tokens))
+  else safeStorageRemove(sessionStorage, 'rulemirror.tokens')
 }
 
 function clearSession() {
   persistTokens(null)
-  sessionStorage.removeItem('rulemirror.email')
+  safeStorageRemove(sessionStorage, 'rulemirror.email')
   state.email = ''
   state.imports = []
   state.trades = []
@@ -562,7 +566,7 @@ async function hydrateWorkspace() {
     if (account) {
       state.profile.name = account.display_name || state.profile.name
       state.publicProfile = account.public_profile
-      localStorage.setItem('rulemirror.public', String(account.public_profile))
+      safeStorageSet(localStorage, 'rulemirror.public', String(account.public_profile))
       persistProfile()
     }
     render()
@@ -594,7 +598,7 @@ async function submitAuth(event: SubmitEvent) {
     const tokens = state.authMode === 'register' ? await api.register(email, password) : await api.login(email, password)
     persistTokens(tokens)
     state.email = email
-    sessionStorage.setItem('rulemirror.email', email)
+    safeStorageSet(sessionStorage, 'rulemirror.email', email)
     state.busy = null
     setNotice(state.authMode === 'register' ? 'Your workspace is ready.' : 'Signed in successfully.', 'success')
   } catch (error) {
@@ -708,7 +712,7 @@ async function deleteAccount() {
   render()
   try {
     await withAuth((accessToken) => api.deleteAccount(accessToken))
-    localStorage.removeItem('rulemirror.profile')
+    safeStorageRemove(localStorage, 'rulemirror.profile')
     state.busy = null
     await signOut()
   } catch (error) {
@@ -789,7 +793,7 @@ async function togglePublicProfile() {
   try {
     const result = await withAuth((accessToken) => api.setPublicProfile(next, accessToken))
     state.publicProfile = result.public_profile
-    localStorage.setItem('rulemirror.public', String(result.public_profile))
+    safeStorageSet(localStorage, 'rulemirror.public', String(result.public_profile))
     setNotice(result.public_profile ? 'Public profile visibility enabled.' : 'Public profile visibility disabled.', 'success')
   } catch (error) {
     setNotice(errorMessage(error), 'error')
