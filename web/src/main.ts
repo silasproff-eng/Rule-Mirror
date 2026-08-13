@@ -165,7 +165,9 @@ function accountResultView(account: AccountProfile) {
 
 function formatDate(value: string | null | undefined) {
   if (!value) return '—'
-  return new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', year: 'numeric' }).format(new Date(value))
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return '—'
+  return new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', year: 'numeric' }).format(date)
 }
 
 function scoreTone(score: number | null | undefined) {
