@@ -184,7 +184,10 @@ def parse_timestamp(value: str, timezone_name: str | None) -> datetime:
             try:
                 parsed = datetime.strptime(value.strip(), "%I:%M %p %m/%d/%Y")
             except ValueError:
-                raise ImportValidationError("invalid_timestamp", "Execution timestamp is invalid", "executed_at") from error
+                try:
+                    parsed = datetime.strptime(value.strip(), "%m/%d/%Y %I:%M %p")
+                except ValueError:
+                    raise ImportValidationError("invalid_timestamp", "Execution timestamp is invalid", "executed_at") from error
     if parsed.tzinfo:
         return parsed.astimezone(UTC)
     if not timezone_name:

@@ -25,6 +25,11 @@ def test_alias_mapping_and_preview_non_mutating():
     assert len(result["preview"]) == 5
 
 
+def test_date_first_timestamp_with_time_and_meridiem_uses_timezone():
+    parsed = parse_timestamp("08/07/2026 09:30 PM", "America/New_York")
+    assert parsed.isoformat() == "2026-08-08T01:30:00+00:00"
+
+
 def test_binary_and_size_limits():
     with pytest.raises(ImportValidationError, match="binary"):
         preview(b"symbol\x00value", 100, 10)
