@@ -382,6 +382,8 @@ function bindEvents() {
   }
   const authForm = mount.querySelector<HTMLElement>('#auth-form')
   if (authForm) authForm.setAttribute('aria-busy', state.busy === 'auth' ? 'true' : 'false')
+  const accountSearch = mount.querySelector<HTMLInputElement>('#account-search')
+  if (accountSearch) accountSearch.setAttribute('autocomplete', 'off')
   const portfolioPanel = mount.querySelector<HTMLElement>('.portfolio-layout')
   if (portfolioPanel) portfolioPanel.setAttribute('aria-busy', state.busy === 'portfolio' ? 'true' : 'false')
   const deleteButton = mount.querySelector<HTMLButtonElement>('#delete-account')
