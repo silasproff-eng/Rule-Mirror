@@ -88,7 +88,7 @@ export class LunaApiClient {
   }
 
   deleteTrade(tradeId: string, accessToken: string): Promise<void> {
-    return this.authorized(`/trades/${encodeURIComponent(tradeId)}`, accessToken, { method: 'DELETE' }).then(() => undefined)
+    return this.requestNoContent(`/trades/${encodeURIComponent(tradeId)}`, accessToken, { method: 'DELETE' })
   }
 
   searchAccounts(query: string, accessToken: string): Promise<AccountProfile[]> {
@@ -155,11 +155,17 @@ export class LunaApiClient {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ refresh_token: refreshToken }),
-    }).then(() => undefined)
+    }, true).then(() => undefined)
   }
 
   deleteAccount(accessToken: string): Promise<void> {
-    return this.authorized('/account', accessToken, { method: 'DELETE' }).then(() => undefined)
+    return this.requestNoContent('/account', accessToken, { method: 'DELETE' })
+  }
+
+  private requestNoContent(path: string, accessToken: string, init: RequestInit): Promise<void> {
+    const headers = new Headers(init.headers)
+    headers.set('Authorization', `Bearer ${accessToken}`)
+    return this.request(path, { ...init, headers }, true).then(() => undefined)
   }
 
   private authorized<T>(path: string, accessToken: string, init: RequestInit = {}): Promise<T> {
@@ -168,7 +174,7 @@ export class LunaApiClient {
     return this.request(path, { ...init, headers })
   }
 
-  private async request<T>(path: string, init: RequestInit = {}): Promise<T> {
+  private async request<T>(path: string, init: RequestInit = {}, allowEmpty = false): Promise<T> {
     const controller = new AbortController()
     let timedOut = false
     const callerSignal = init.signal
@@ -206,6 +212,7 @@ export class LunaApiClient {
         response.status,
       )
     }
+    if (!raw && !allowEmpty) throw new ApiError('invalid_response', 'The service returned an unexpected empty response.', response.status)
     if (path.startsWith('/accounts/search')) this.lastSearchWasLimited = response.headers.get('X-Result-Limit') === '20'
     if (path === '/trades') this.lastTradesWasLimited = response.headers.get('X-Result-Limit') === '200'
     if (path === '/imports') this.lastImportsWasLimited = response.headers.get('X-Result-Limit') === '20'
