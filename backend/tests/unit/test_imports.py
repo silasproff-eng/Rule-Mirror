@@ -26,8 +26,8 @@ def test_alias_mapping_and_preview_non_mutating():
 
 
 def test_date_first_timestamp_with_time_and_meridiem_uses_timezone():
-    parsed = parse_timestamp("08/07/2026 09:30 PM", "America/New_York")
-    assert parsed.isoformat() == "2026-08-08T01:30:00+00:00"
+    parsed = parse_timestamp("08/07/2026 9:43 AM", "America/New_York")
+    assert parsed.isoformat() == "2026-08-07T13:43:00+00:00"
 
 
 def test_binary_and_size_limits():
