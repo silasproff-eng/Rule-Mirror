@@ -8,6 +8,6 @@ describe('avatar file validation', () => {
 
   it('rejects unsupported types and oversized files', () => {
     expect(avatarFileError(new File(['avatar'], 'avatar.svg', { type: 'image/svg+xml' }))).toBe('Use a PNG, JPEG, or WebP profile picture.')
-    expect(avatarFileError(new File([new Uint8Array(MAX_AVATAR_BYTES + 1)], 'avatar.png', { type: 'image/png' }))).toBe('Choose a profile picture smaller than 1 MB.')
+    expect(avatarFileError(new File([new Uint8Array(MAX_AVATAR_BYTES + 1)], 'avatar.png', { type: 'image/png' }))).toBe('Choose a profile picture smaller than 256 KB.')
   })
 })
