@@ -159,6 +159,7 @@ class _LaunchShellState extends State<_LaunchShell> {
             _OverviewTab(
                 key: ValueKey('overview-$signedIn'),
                 authenticated: signedIn,
+                active: tab == 0,
                 gateway: gateway,
                 onNavigate: (value) => pages.animateToPage(value,
                     duration: const Duration(milliseconds: 260),
@@ -166,6 +167,7 @@ class _LaunchShellState extends State<_LaunchShell> {
             _DataTab(
                 key: ValueKey('portfolio-$signedIn'),
                 authenticated: signedIn,
+                active: tab == 1,
                 title: 'My portfolio',
                 load: gateway.portfolio,
                 gateway: gateway,
@@ -192,6 +194,7 @@ class _LaunchShellState extends State<_LaunchShell> {
             _DataTab(
                 key: ValueKey('trades-$signedIn'),
                 authenticated: signedIn,
+                active: tab == 3,
                 title: 'Trades',
                 load: gateway.trades,
                 gateway: gateway,
@@ -199,6 +202,7 @@ class _LaunchShellState extends State<_LaunchShell> {
             _SearchTab(
                 key: ValueKey('profile-$signedIn'),
                 authenticated: signedIn,
+                active: tab == 4,
                 gateway: gateway,
                 onThemeChanged: widget.onThemeChanged,
                 onSignedOut: _resetToSignIn),
@@ -448,7 +452,7 @@ class _SplashScreen extends StatelessWidget {
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
                   color: Colors.white, borderRadius: BorderRadius.circular(22)),
-              child: Image.asset('assets/rulemirror-logo.png',
+              child: Image.asset('assets/rulemirror-splash.png',
                   fit: BoxFit.contain)),
           const SizedBox(height: 22),
           Text('A clearer record of your decisions',
@@ -513,10 +517,12 @@ class _OverviewTab extends StatefulWidget {
   const _OverviewTab(
       {super.key,
       required this.authenticated,
+      required this.active,
       required this.gateway,
       required this.onNavigate});
 
   final bool authenticated;
+  final bool active;
   final AnalysisGateway gateway;
   final ValueChanged<int> onNavigate;
 
@@ -559,6 +565,7 @@ class _OverviewTabState extends State<_OverviewTab> {
               'Sign in from Analyze to review private imports, holdings, reconstructed trades, and evidence-based rule checks.',
           onRetry: () => widget.onNavigate(2));
     }
+    if (!widget.active) return const SizedBox.expand();
     request ??= _load();
     return SafeArea(
         child: FutureBuilder<_OverviewSnapshot>(
@@ -687,12 +694,14 @@ class _DataTab extends StatefulWidget {
   const _DataTab(
       {super.key,
       required this.authenticated,
+      required this.active,
       required this.title,
       required this.load,
       required this.gateway,
       this.deleteTrade,
       this.importPortfolio});
   final bool authenticated;
+  final bool active;
   final String title;
   final Future<Object> Function() load;
   final AnalysisGateway gateway;
@@ -708,10 +717,12 @@ class _SearchTab extends StatefulWidget {
   const _SearchTab(
       {super.key,
       required this.authenticated,
+      required this.active,
       required this.gateway,
       required this.onThemeChanged,
       required this.onSignedOut});
   final bool authenticated;
+  final bool active;
   final HttpAnalysisGateway gateway;
   final VoidCallback onThemeChanged;
   final VoidCallback onSignedOut;
@@ -734,7 +745,19 @@ class _SearchTabState extends State<_SearchTab> {
   @override
   void initState() {
     super.initState();
-    if (widget.authenticated) _loadProfile();
+    if (widget.authenticated && widget.active) _loadProfile();
+  }
+
+  @override
+  void didUpdateWidget(covariant _SearchTab oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.authenticated &&
+        widget.active &&
+        (!oldWidget.authenticated || !oldWidget.active) &&
+        profile == null &&
+        !loadingProfile) {
+      _loadProfile();
+    }
   }
 
   Future<void> _loadProfile() async {
@@ -819,6 +842,7 @@ class _SearchTabState extends State<_SearchTab> {
 
   @override
   Widget build(BuildContext context) {
+    if (!widget.active) return const SizedBox.expand();
     return SafeArea(
         child: ListView(padding: const EdgeInsets.all(24), children: [
       Text('Profile & settings',
@@ -1346,6 +1370,7 @@ class _DataTabState extends State<_DataTab> {
 
   @override
   Widget build(BuildContext context) {
+    if (!widget.active) return const SizedBox.expand();
     if (!widget.authenticated) {
       return _InfoTab(
           title: widget.title,

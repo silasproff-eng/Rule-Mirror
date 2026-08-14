@@ -70,12 +70,6 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
   }
 
   @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    precacheImage(const AssetImage('assets/rulemirror-mark.png'), context);
-  }
-
-  @override
   void didUpdateWidget(covariant AnalysisScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.authenticated != widget.authenticated &&

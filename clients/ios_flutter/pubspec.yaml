@@ -20,6 +20,7 @@ flutter:
   uses-material-design: true
   assets:
     - assets/rulemirror-logo.png
+    - assets/rulemirror-splash.png
     - assets/rulemirror-mark.png
     - assets/fonts/MaterialIcons-Regular.otf
   fonts:
