@@ -18,7 +18,7 @@ void main() {
             gateway: FakeGateway(),
             fileSelector: () async =>
                 SelectedFile('fills.csv', Uint8List.fromList([1, 2, 3])))));
-    await tester.tap(find.text('Select sample CSV'));
+    await tester.tap(find.text('Select CSV'));
     await tester.pumpAndSettle();
     await tester.ensureVisible(find.text('Import and analyze'));
     await tester.tap(find.text('Import and analyze'));

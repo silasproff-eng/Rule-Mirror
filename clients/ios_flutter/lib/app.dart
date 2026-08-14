@@ -1,15 +1,18 @@
 import 'dart:async';
 import 'dart:typed_data';
 
-import 'package:file_picker/file_picker.dart';
+import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 
 import 'core/app_config.dart';
 import 'features/analysis/analysis_gateway.dart';
 import 'features/analysis/analysis_screen.dart';
+import 'features/strategies/strategy_catalog.dart';
 
 class StrategyAuditApp extends StatefulWidget {
-  const StrategyAuditApp({super.key});
+  const StrategyAuditApp({super.key, this.gateway});
+
+  final HttpAnalysisGateway? gateway;
 
   @override
   State<StrategyAuditApp> createState() => _StrategyAuditAppState();
@@ -36,6 +39,7 @@ class _StrategyAuditAppState extends State<StrategyAuditApp> {
       theme: _theme(light),
       darkTheme: _theme(dark),
       home: _LaunchShell(
+          gateway: widget.gateway,
           onThemeChanged: () => setState(() => mode =
               mode == ThemeMode.dark ? ThemeMode.light : ThemeMode.dark)),
     );
@@ -74,8 +78,9 @@ class _StrategyAuditAppState extends State<StrategyAuditApp> {
 }
 
 class _LaunchShell extends StatefulWidget {
-  const _LaunchShell({required this.onThemeChanged});
+  const _LaunchShell({required this.onThemeChanged, this.gateway});
   final VoidCallback onThemeChanged;
+  final HttpAnalysisGateway? gateway;
 
   @override
   State<_LaunchShell> createState() => _LaunchShellState();
@@ -83,15 +88,14 @@ class _LaunchShell extends StatefulWidget {
 
 class _LaunchShellState extends State<_LaunchShell>
     with SingleTickerProviderStateMixin {
-  late final AnimationController animation = AnimationController(
-      vsync: this, duration: const Duration(milliseconds: 1100))
-    ..forward();
+  late final AnimationController animation;
   int tab = 2;
   bool ready = false;
   late final PageController pages = PageController(initialPage: tab);
   late final HttpAnalysisGateway gateway;
   final TextEditingController topSearch = TextEditingController();
   bool signedIn = false;
+  String selectedStrategy = 'vwap-reclaim';
 
   void _resetToSignIn() {
     if (pages.hasClients) pages.jumpToPage(2);
@@ -104,10 +108,29 @@ class _LaunchShellState extends State<_LaunchShell>
   @override
   void initState() {
     super.initState();
-    gateway = HttpAnalysisGateway(onAuthenticationExpired: _resetToSignIn);
-    Future<void>.delayed(const Duration(milliseconds: 700), () {
-      if (mounted) setState(() => ready = true);
-    });
+    animation = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 1100))
+      ..forward();
+    gateway = widget.gateway ??
+        HttpAnalysisGateway(onAuthenticationExpired: _resetToSignIn);
+    _restoreSession();
+  }
+
+  Future<void> _restoreSession() async {
+    final restored = await gateway.restoreSession();
+    await Future<void>.delayed(const Duration(milliseconds: 500));
+    if (mounted) {
+      setState(() {
+        signedIn = restored;
+        if (restored) tab = 0;
+        ready = true;
+      });
+      if (restored) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted && pages.hasClients) pages.jumpToPage(0);
+        });
+      }
+    }
   }
 
   @override
@@ -124,23 +147,31 @@ class _LaunchShellState extends State<_LaunchShell>
       return const _SplashScreen();
     }
     return Scaffold(
-      appBar: tab == 2
-          ? null
-          : AppBar(
-              leading: const Padding(
-                  padding: EdgeInsets.only(left: 12),
-                  child: RuleMirrorMascot(size: 34)),
-              leadingWidth: 54,
-              centerTitle: true,
-              title:
-                  _AccountSearchButton(gateway: gateway, signedIn: signedIn)),
+      appBar: AppBar(
+          leading: Semantics(
+              button: true,
+              label: 'Open Rule Mirror commands',
+              hint: 'Navigate the workspace or search public accounts',
+              child: IconButton(
+                  tooltip: 'Rule Mirror commands',
+                  onPressed: _openCommandSheet,
+                  icon: const RuleMirrorMascot(size: 34))),
+          leadingWidth: 58,
+          centerTitle: true,
+          title: _AccountSearchButton(gateway: gateway, signedIn: signedIn)),
       body: FadeTransition(
           opacity: CurvedAnimation(parent: animation, curve: Curves.easeOut),
           child: PageView(
               controller: pages,
               onPageChanged: (value) => setState(() => tab = value),
               children: [
-                const _HomeTab(),
+                _OverviewTab(
+                    key: ValueKey('overview-$signedIn'),
+                    authenticated: signedIn,
+                    gateway: gateway,
+                    onNavigate: (value) => pages.animateToPage(value,
+                        duration: const Duration(milliseconds: 260),
+                        curve: Curves.easeOutCubic)),
                 _DataTab(
                     key: ValueKey('portfolio-$signedIn'),
                     authenticated: signedIn,
@@ -153,11 +184,20 @@ class _LaunchShellState extends State<_LaunchShell>
                     onThemeChanged: widget.onThemeChanged,
                     gateway: gateway,
                     authenticated: signedIn,
+                    embedded: true,
+                    strategySlug: selectedStrategy,
+                    onOpenTerms: () => _openTerms(context),
+                    onOpenPrivacy: () => _openPrivacy(context),
                     onSearch: () => showSearch<String>(
                         context: context,
                         delegate: _AccountSearchDelegate(
                             gateway: gateway, signedIn: signedIn)),
-                    onAuthenticated: () => setState(() => signedIn = true)),
+                    onAuthenticated: () {
+                      setState(() => signedIn = true);
+                      pages.animateToPage(0,
+                          duration: const Duration(milliseconds: 260),
+                          curve: Curves.easeOutCubic);
+                    }),
                 _DataTab(
                     key: ValueKey('trades-$signedIn'),
                     authenticated: signedIn,
@@ -200,6 +240,174 @@ class _LaunchShellState extends State<_LaunchShell>
                 label: 'Profile'),
           ]),
     );
+  }
+
+  void _openCommandSheet() {
+    showModalBottomSheet<void>(
+        context: context,
+        isScrollControlled: true,
+        showDragHandle: true,
+        builder: (sheetContext) => _MascotCommandSheet(
+            signedIn: signedIn,
+            selectedStrategy: selectedStrategy,
+            onNavigate: (destination) {
+              Navigator.pop(sheetContext);
+              pages.animateToPage(destination,
+                  duration: const Duration(milliseconds: 260),
+                  curve: Curves.easeOutCubic);
+            },
+            onStrategySelected: (strategy) {
+              setState(() => selectedStrategy = strategy.slug);
+              Navigator.pop(sheetContext);
+            },
+            onAccountSearch: () {
+              Navigator.pop(sheetContext);
+              showSearch<String>(
+                  context: context,
+                  delegate: _AccountSearchDelegate(
+                      gateway: gateway, signedIn: signedIn));
+            }));
+  }
+}
+
+class _MascotCommandSheet extends StatefulWidget {
+  const _MascotCommandSheet(
+      {required this.signedIn,
+      required this.selectedStrategy,
+      required this.onNavigate,
+      required this.onStrategySelected,
+      required this.onAccountSearch});
+
+  final bool signedIn;
+  final String selectedStrategy;
+  final ValueChanged<int> onNavigate;
+  final ValueChanged<StrategyDefinition> onStrategySelected;
+  final VoidCallback onAccountSearch;
+
+  @override
+  State<_MascotCommandSheet> createState() => _MascotCommandSheetState();
+}
+
+class _MascotCommandSheetState extends State<_MascotCommandSheet> {
+  final query = TextEditingController();
+  String search = '';
+
+  static const commands = [
+    ('Overview', 'home dashboard summary', 0, Icons.grid_view_outlined),
+    (
+      'Portfolio',
+      'holdings positions sync',
+      1,
+      Icons.account_balance_wallet_outlined
+    ),
+    ('Analyze', 'import csv review trade', 2, Icons.analytics_outlined),
+    ('Trades', 'history records executions', 3, Icons.list_alt_outlined),
+    ('Profile and settings', 'account privacy theme', 4, Icons.person_outline),
+  ];
+
+  @override
+  void dispose() {
+    query.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final normalized = search.trim().toLowerCase();
+    final visibleCommands = commands
+        .where((command) =>
+            normalized.isEmpty ||
+            '${command.$1} ${command.$2}'.toLowerCase().contains(normalized))
+        .toList();
+    final visibleStrategies = strategyCatalog
+        .where((strategy) =>
+            normalized.isNotEmpty &&
+            '${strategy.name} ${strategy.profile} ${strategy.summary}'
+                .toLowerCase()
+                .contains(normalized))
+        .take(12)
+        .toList();
+    final current = strategyBySlug(widget.selectedStrategy);
+    return SafeArea(
+        child: Padding(
+            padding: EdgeInsets.only(
+                left: 20,
+                right: 20,
+                bottom: MediaQuery.viewInsetsOf(context).bottom + 20),
+            child: ConstrainedBox(
+                constraints: BoxConstraints(
+                    maxHeight: MediaQuery.sizeOf(context).height * 0.74),
+                child: Column(mainAxisSize: MainAxisSize.min, children: [
+                  Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text('Ask the mascot',
+                          style: Theme.of(context).textTheme.titleLarge)),
+                  const SizedBox(height: 5),
+                  const Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                          'Search workspace commands or documented strategy names. No trade advice or autonomous actions.')),
+                  const SizedBox(height: 14),
+                  TextField(
+                      controller: query,
+                      autofocus: true,
+                      onChanged: (value) => setState(() => search = value),
+                      decoration: const InputDecoration(
+                          labelText: 'Search commands and strategies',
+                          prefixIcon: Icon(Icons.search))),
+                  const SizedBox(height: 10),
+                  Expanded(
+                      child: ListView(children: [
+                    if (normalized.isEmpty)
+                      ListTile(
+                          leading: const Icon(Icons.rule_folder_outlined),
+                          title: Text(current.name),
+                          subtitle: const Text('Selected review strategy'),
+                          trailing: const Icon(Icons.check_circle_outline)),
+                    ...visibleCommands.map((command) => ListTile(
+                        leading: Icon(command.$4),
+                        title: Text(command.$1),
+                        subtitle: Text(command.$2),
+                        onTap: () => widget.onNavigate(command.$3))),
+                    if (normalized.isEmpty ||
+                        'search public accounts handles display names'
+                            .contains(normalized))
+                      ListTile(
+                          leading: const Icon(Icons.person_search_outlined),
+                          title: const Text('Search public accounts'),
+                          subtitle: Text(widget.signedIn
+                              ? 'Find a public handle or display name.'
+                              : 'Sign in to search public accounts.'),
+                          enabled: widget.signedIn,
+                          onTap:
+                              widget.signedIn ? widget.onAccountSearch : null),
+                    if (visibleStrategies.isNotEmpty) ...[
+                      const Divider(),
+                      Padding(
+                          padding: const EdgeInsets.fromLTRB(16, 10, 16, 5),
+                          child: Text('Versioned strategy profiles',
+                              style: Theme.of(context).textTheme.labelLarge)),
+                      ...visibleStrategies.map((strategy) => ListTile(
+                          leading: CircleAvatar(
+                              child: Text(strategy.name.substring(0, 1))),
+                          title: Text(strategy.name),
+                          subtitle:
+                              Text('${strategy.profile} · ${strategy.summary}'),
+                          trailing: strategy.slug == widget.selectedStrategy
+                              ? const Icon(Icons.check_circle)
+                              : const Icon(Icons.chevron_right),
+                          onTap: () => widget.onStrategySelected(strategy)))
+                    ],
+                    if (visibleCommands.isEmpty &&
+                        visibleStrategies.isEmpty &&
+                        !'search public accounts handles display names'
+                            .contains(normalized))
+                      const Padding(
+                          padding: EdgeInsets.all(24),
+                          child: Text(
+                              'No command or strategy matches those keywords.'))
+                  ]))
+                ]))));
   }
 }
 
@@ -310,43 +518,178 @@ class _AccountSearchDelegate extends SearchDelegate<String> {
   Widget buildSuggestions(BuildContext context) => buildResults(context);
 }
 
-class _HomeTab extends StatelessWidget {
-  const _HomeTab();
+class _OverviewTab extends StatefulWidget {
+  const _OverviewTab(
+      {super.key,
+      required this.authenticated,
+      required this.gateway,
+      required this.onNavigate});
+
+  final bool authenticated;
+  final AnalysisGateway gateway;
+  final ValueChanged<int> onNavigate;
+
+  @override
+  State<_OverviewTab> createState() => _OverviewTabState();
+}
+
+class _OverviewSnapshot {
+  const _OverviewSnapshot(this.profile, this.trades, this.imports);
+  final AccountProfile profile;
+  final List<TradeHistory> trades;
+  final List<ImportSummary> imports;
+}
+
+class _OverviewTabState extends State<_OverviewTab> {
+  Future<_OverviewSnapshot>? request;
+
+  Future<_OverviewSnapshot> _load() async {
+    final values = await Future.wait([
+      widget.gateway.profile(),
+      widget.gateway.trades(),
+      widget.gateway.importHistory()
+    ]);
+    return _OverviewSnapshot(values[0] as AccountProfile,
+        values[1] as List<TradeHistory>, values[2] as List<ImportSummary>);
+  }
+
+  Future<void> _refresh() async {
+    final next = _load();
+    setState(() => request = next);
+    await next;
+  }
 
   @override
   Widget build(BuildContext context) {
+    if (!widget.authenticated) {
+      return _InfoTab(
+          title: 'See the decision clearly.',
+          detail:
+              'Sign in from Analyze to review private imports, holdings, reconstructed trades, and evidence-based rule checks.',
+          onRetry: () => widget.onNavigate(2));
+    }
+    request ??= _load();
     return SafeArea(
-        child: Center(
-            child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 720),
-                child: Padding(
-                    padding: const EdgeInsets.all(28),
-                    child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        crossAxisAlignment: CrossAxisAlignment.start,
+        child: FutureBuilder<_OverviewSnapshot>(
+            future: request,
+            builder: (context, snapshot) {
+              if (snapshot.connectionState != ConnectionState.done) {
+                return const Center(child: CircularProgressIndicator());
+              }
+              if (snapshot.hasError) {
+                return _InfoTab(
+                    title: 'Overview unavailable',
+                    detail:
+                        'Your private workspace could not be loaded right now.',
+                    onRetry: _refresh);
+              }
+              final data = snapshot.data!;
+              final reviewed =
+                  data.trades.where((trade) => trade.analyzed).length;
+              return RefreshIndicator(
+                  onRefresh: _refresh,
+                  child: ListView(padding: const EdgeInsets.all(24), children: [
+                    Text('Overview',
+                        style: Theme.of(context)
+                            .textTheme
+                            .headlineMedium
+                            ?.copyWith(fontWeight: FontWeight.w700)),
+                    const SizedBox(height: 6),
+                    Text(
+                        'Welcome back, ${data.profile.displayName ?? 'your workspace'}.'),
+                    const SizedBox(height: 18),
+                    GridView.count(
+                        crossAxisCount:
+                            MediaQuery.sizeOf(context).width >= 700 ? 4 : 2,
+                        shrinkWrap: true,
+                        physics: const NeverScrollableScrollPhysics(),
+                        crossAxisSpacing: 10,
+                        mainAxisSpacing: 10,
+                        childAspectRatio: 1.42,
                         children: [
-                          Text('Rule Mirror',
-                              style: Theme.of(context).textTheme.labelLarge),
-                          const SizedBox(height: 12),
-                          Text('See the decision clearly.',
+                          _OverviewMetric(
+                              label: 'Portfolio',
+                              value: _money(
+                                  data.profile.metrics['portfolio_value'])),
+                          _OverviewMetric(
+                              label: 'Total P/L',
+                              value: _money(data.profile.metrics['total_pnl'])),
+                          _OverviewMetric(
+                              label: 'Win rate',
+                              value:
+                                  _percent(data.profile.metrics['win_rate'])),
+                          _OverviewMetric(
+                              label: 'Discipline',
+                              value: _score(data.profile.metrics['discipline']))
+                        ]),
+                    const SizedBox(height: 20),
+                    Card(
+                        child: ListTile(
+                            leading: const Icon(Icons.analytics_outlined),
+                            title:
+                                Text('$reviewed of 20 reviews toward insights'),
+                            subtitle: Text(reviewed >= 20
+                                ? 'Your comparison threshold is met.'
+                                : 'Rule Mirror waits for enough history before presenting patterns.'),
+                            trailing: const Icon(Icons.chevron_right),
+                            onTap: () => _showInsights(context, data.trades))),
+                    const SizedBox(height: 20),
+                    Row(children: [
+                      Expanded(
+                          child: Text('Recent imports',
                               style: Theme.of(context)
                                   .textTheme
-                                  .displaySmall
-                                  ?.copyWith(fontWeight: FontWeight.w700)),
-                          const SizedBox(height: 14),
-                          const Text(
-                              'Review your process, keep your records private, and build a clearer history over time.'),
-                          const SizedBox(height: 28),
-                          Card(
-                              child: ListTile(
-                                  leading:
-                                      const Icon(Icons.upload_file_outlined),
-                                  title: const Text(
-                                      'Start with an execution export'),
-                                  subtitle: const Text(
-                                      'Analyze is ready when you are.'))),
-                        ])))));
+                                  .titleLarge
+                                  ?.copyWith(fontWeight: FontWeight.w700))),
+                      TextButton(
+                          onPressed: () => widget.onNavigate(2),
+                          child: const Text('Import CSV'))
+                    ]),
+                    if (widget.gateway.lastImportsWasLimited)
+                      const Text(
+                          'Showing the 20 most recent imports. Older audit records remain stored.'),
+                    if (data.imports.isEmpty)
+                      const Card(
+                          child: Padding(
+                              padding: EdgeInsets.all(20),
+                              child: Text(
+                                  'No imports yet. Add an execution export from Analyze.'))),
+                    ...data.imports.take(5).map((item) => Card(
+                        child: ListTile(
+                            leading: Icon(item.status == 'completed'
+                                ? Icons.check_circle_outline
+                                : Icons.error_outline),
+                            title: Text(item.displayName),
+                            subtitle: Text(
+                                '${item.acceptedExecutionCount} executions · ${item.affectedTradeCount} trades'),
+                            trailing: Text(MaterialLocalizations.of(context)
+                                .formatShortDate(item.createdAt.toLocal())))))
+                  ]));
+            }));
   }
+}
+
+class _OverviewMetric extends StatelessWidget {
+  const _OverviewMetric({required this.label, required this.value});
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) => Card(
+      child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(label, style: Theme.of(context).textTheme.labelMedium),
+                const SizedBox(height: 7),
+                Text(value,
+                    style: Theme.of(context)
+                        .textTheme
+                        .titleLarge
+                        ?.copyWith(fontWeight: FontWeight.w700))
+              ])));
 }
 
 class _DataTab extends StatefulWidget {
@@ -616,6 +959,31 @@ class _SearchTabState extends State<_SearchTab> {
               ]);
             }),
       const SizedBox(height: 24),
+      Card(
+          child: Column(children: [
+        ListTile(
+            leading: const Icon(Icons.layers_outlined),
+            title: const Text('Strategies'),
+            subtitle: Text(
+                '${strategyCatalog.length} documented, versioned default rule profiles.'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => _showStrategyLibrary(context)),
+        ListTile(
+            leading: const Icon(Icons.insights_outlined),
+            title: const Text('Insights'),
+            subtitle: const Text(
+                'Derived only from your imported trades and completed reviews.'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () async {
+              try {
+                final trades = await widget.gateway.trades();
+                if (mounted) await _showInsights(this.context, trades);
+              } on GatewayError catch (error) {
+                if (mounted) _message(error.message);
+              }
+            })
+      ])),
+      const SizedBox(height: 12),
       OutlinedButton.icon(
           onPressed: widget.onThemeChanged,
           icon: const Icon(Icons.brightness_6_outlined),
@@ -667,24 +1035,10 @@ class _SearchTabState extends State<_SearchTab> {
       const SizedBox(height: 12),
       Row(children: [
         TextButton(
-            onPressed: () => Navigator.of(context).push(MaterialPageRoute(
-                builder: (_) =>
-                    const _LegalPage(title: 'Terms of Service', sections: [
-                      'Agreement',
-                      'Rule Mirror is educational analytics, not financial advice.',
-                      'Use the service lawfully and keep your account secure.',
-                      'Contact silas@rulemirror.com.'
-                    ]))),
+            onPressed: () => _openTerms(context),
             child: const Text('Terms of Service')),
         TextButton(
-            onPressed: () => Navigator.of(context).push(MaterialPageRoute(
-                builder: (_) =>
-                    const _LegalPage(title: 'Privacy Policy', sections: [
-                      'What we collect',
-                      'We use account and import data to provide the service.',
-                      'Public profiles share summary metrics only.',
-                      'Contact silas@rulemirror.com.'
-                    ]))),
+            onPressed: () => _openPrivacy(context),
             child: const Text('Privacy Policy')),
       ]),
     ]));
@@ -751,12 +1105,127 @@ Future<void> _showPublicProfile(
                       value: _money(account.metrics['total_pnl'])),
                   _ProfileMetric(
                       label: 'Win rate',
-                      value: _percent(account.metrics['win_rate'])),
+                      value: _percent(account.metrics['win_rate']))
+                ]),
+                const SizedBox(height: 14),
+                Row(children: [
                   _ProfileMetric(
                       label: 'Discipline',
-                      value: _score(account.metrics['discipline']))
+                      value: _score(account.metrics['discipline'])),
+                  _ProfileMetric(
+                      label: 'Portfolio',
+                      value: _money(account.metrics['portfolio_value']))
                 ])
               ]))));
+}
+
+Future<void> _showInsights(
+    BuildContext context, List<TradeHistory> trades) async {
+  final reviewed = trades.where((trade) => trade.analyzed).length;
+  final remaining = (20 - reviewed).clamp(0, 20);
+  await Navigator.of(context).push(MaterialPageRoute<void>(
+      builder: (context) => Scaffold(
+          appBar: AppBar(title: const Text('Insights')),
+          body: ListView(padding: const EdgeInsets.all(24), children: [
+            Text('Insights, when the sample earns them.',
+                style: Theme.of(context)
+                    .textTheme
+                    .headlineMedium
+                    ?.copyWith(fontWeight: FontWeight.w700)),
+            const SizedBox(height: 10),
+            const Text(
+                'Comparisons stay locked until there is enough of your own reviewed history to make them meaningful.'),
+            const SizedBox(height: 24),
+            Card(
+                child: Padding(
+                    padding: const EdgeInsets.all(22),
+                    child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Icon(reviewed >= 20
+                              ? Icons.insights
+                              : Icons.lock_outline),
+                          const SizedBox(height: 14),
+                          Text(
+                              reviewed >= 20
+                                  ? 'Your comparison threshold is met.'
+                                  : '$remaining more reviewed ${remaining == 1 ? 'trade' : 'trades'} to unlock.',
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .titleLarge
+                                  ?.copyWith(fontWeight: FontWeight.w700)),
+                          const SizedBox(height: 10),
+                          LinearProgressIndicator(
+                              value: (reviewed / 20).clamp(0, 1)),
+                          const SizedBox(height: 8),
+                          Text('$reviewed of 20 reviewed')
+                        ]))),
+            const SizedBox(height: 12),
+            const Card(
+                child: ListTile(
+                    leading: Icon(Icons.rule_outlined),
+                    title: Text('Most consistent rule'),
+                    subtitle: Text(
+                        'Shown only when reviewed evidence supports a personal baseline.'))),
+            const Card(
+                child: ListTile(
+                    leading: Icon(Icons.fact_check_outlined),
+                    title: Text('Most common miss'),
+                    subtitle: Text(
+                        'Rule Mirror does not infer a pattern from a small sample.')))
+          ]))));
+}
+
+Future<void> _showStrategyLibrary(BuildContext context) async {
+  await Navigator.of(context).push(MaterialPageRoute<void>(
+      builder: (context) => const _StrategyLibraryPage()));
+}
+
+class _StrategyLibraryPage extends StatefulWidget {
+  const _StrategyLibraryPage();
+
+  @override
+  State<_StrategyLibraryPage> createState() => _StrategyLibraryPageState();
+}
+
+class _StrategyLibraryPageState extends State<_StrategyLibraryPage> {
+  String query = '';
+
+  @override
+  Widget build(BuildContext context) {
+    final visible = strategyCatalog
+        .where((strategy) =>
+            '${strategy.name} ${strategy.profile} ${strategy.summary}'
+                .toLowerCase()
+                .contains(query.trim().toLowerCase()))
+        .toList();
+    return Scaffold(
+        appBar: AppBar(title: const Text('Strategy library')),
+        body: ListView(padding: const EdgeInsets.all(24), children: [
+          Text('One visible rule profile at a time.',
+              style: Theme.of(context)
+                  .textTheme
+                  .headlineMedium
+                  ?.copyWith(fontWeight: FontWeight.w700)),
+          const SizedBox(height: 8),
+          const Text(
+              'Every strategy uses a documented, versioned default profile. Missing context is reported as insufficient data, never a prediction.'),
+          const SizedBox(height: 18),
+          TextField(
+              onChanged: (value) => setState(() => query = value),
+              decoration: const InputDecoration(
+                  labelText: 'Search strategies',
+                  prefixIcon: Icon(Icons.search))),
+          const SizedBox(height: 14),
+          ...visible.map((strategy) => Card(
+              child: ListTile(
+                  leading:
+                      CircleAvatar(child: Text(strategy.name.substring(0, 1))),
+                  title: Text(strategy.name),
+                  subtitle: Text('${strategy.profile} · ${strategy.summary}'),
+                  trailing: const Text('v1'))))
+        ]));
+  }
 }
 
 class _LegalPage extends StatelessWidget {
@@ -777,6 +1246,40 @@ class _LegalPage extends StatelessWidget {
       ]));
 }
 
+void _openTerms(BuildContext context) {
+  Navigator.of(context).push(MaterialPageRoute<void>(
+      builder: (_) => const _LegalPage(title: 'Terms of Service', sections: [
+            'Educational scope',
+            'Rule Mirror provides deterministic, educational analytics. It does not provide financial advice, recommendations, predictions, brokerage services, or autonomous trading.',
+            'Your responsibility',
+            'You remain responsible for every investment decision and for verifying the accuracy and completeness of broker exports you provide.',
+            'Account security',
+            'Keep your sign-in credentials and devices secure. Do not upload data you do not have permission to use.',
+            'Service limits',
+            'Market context and imported records may be delayed, incomplete, or unavailable. An adherence score describes a documented rule profile and never predicts an outcome.',
+            'Contact',
+            'Questions can be sent to silas@rulemirror.com.'
+          ])));
+}
+
+void _openPrivacy(BuildContext context) {
+  Navigator.of(context).push(MaterialPageRoute<void>(
+      builder: (_) => const _LegalPage(title: 'Privacy Policy', sections: [
+            'Data used by the service',
+            'Rule Mirror processes your email, display name, opaque public handle, broker CSV imports, holdings, reconstructed trades, and analysis records to provide the workspace.',
+            'Private by default',
+            'Imported files, holdings, executions, trades, and individual reviews are account-scoped. A public profile is optional and shares only the summary metrics described in the setting.',
+            'Storage and transport',
+            'The app sends selected CSV data to the configured Rule Mirror service over HTTPS. The iOS app stores the refresh credential in Keychain and does not store raw market data.',
+            'Retention and deletion',
+            'Account data is retained while the account is active. Delete account removes owned imports, holdings, executions, trades, analyses, and sessions from the service. Local credentials are cleared when you sign out or delete the account.',
+            'Your controls',
+            'You can keep the profile private, sign out, or delete the account from Profile and settings.',
+            'Contact',
+            'Privacy questions can be sent to silas@rulemirror.com.'
+          ])));
+}
+
 class _DataTabState extends State<_DataTab> {
   Future<Object>? request;
   bool importingPortfolio = false;
@@ -790,13 +1293,18 @@ class _DataTabState extends State<_DataTab> {
 
   Future<void> _importPortfolio() async {
     if (widget.importPortfolio == null || importingPortfolio) return;
-    final picked = await FilePicker.platform.pickFiles(
-        type: FileType.custom, allowedExtensions: ['csv'], withData: true);
-    final file = picked?.files.single;
-    if (file == null || file.bytes == null) return;
+    final file = await openFile(acceptedTypeGroups: const [
+      XTypeGroup(
+          label: 'CSV files',
+          extensions: ['csv'],
+          mimeTypes: ['text/csv'],
+          uniformTypeIdentifiers: ['public.comma-separated-values-text'])
+    ]);
+    if (file == null) return;
+    final bytes = await file.readAsBytes();
     setState(() => importingPortfolio = true);
     try {
-      final result = await widget.importPortfolio!(file.bytes!, file.name);
+      final result = await widget.importPortfolio!(bytes, file.name);
       if (mounted) setState(() => portfolioImportedAt = result.importedAt);
       if (!mounted) return;
       await _refresh();

@@ -50,6 +50,9 @@ class FakeGateway implements AnalysisGateway {
   Future<List<TradeHistory>> trades() async => const [];
 
   @override
+  Future<List<ImportSummary>> importHistory() async => const [];
+
+  @override
   Future<void> deleteTrade(String tradeId) async {}
 
   @override
@@ -91,7 +94,8 @@ class FakeGateway implements AnalysisGateway {
   }
 
   @override
-  Future<AnalysisResult> analyzeTrade(AffectedTrade trade) async {
+  Future<AnalysisResult> analyzeTrade(AffectedTrade trade,
+      {String? strategySlug}) async {
     selectedTrade = trade;
     if (analysisFailure != null && (!failAnalysisOnce || !hasFailedAnalysis)) {
       hasFailedAnalysis = true;

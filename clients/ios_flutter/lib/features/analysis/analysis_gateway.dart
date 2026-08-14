@@ -5,6 +5,7 @@ import 'dart:typed_data';
 import 'package:http/http.dart' as http;
 
 import '../../core/app_config.dart';
+import '../../core/credential_store.dart';
 import 'analysis_models.dart';
 
 class GatewayError implements Exception {
@@ -102,6 +103,38 @@ class TradeHistory {
       analyzed: value['analyzed'] as bool);
 }
 
+class ImportSummary {
+  const ImportSummary(
+      {required this.id,
+      required this.displayName,
+      required this.status,
+      required this.createdAt,
+      required this.acceptedExecutionCount,
+      required this.affectedTradeCount,
+      required this.duplicateCount,
+      required this.errorCount});
+
+  final String id;
+  final String displayName;
+  final String status;
+  final DateTime createdAt;
+  final int acceptedExecutionCount;
+  final int affectedTradeCount;
+  final int duplicateCount;
+  final int errorCount;
+
+  factory ImportSummary.fromJson(Map<String, dynamic> value) => ImportSummary(
+      id: value['id'] as String,
+      displayName: value['display_name'] as String,
+      status: value['status'] as String,
+      createdAt: DateTime.parse(value['created_at'] as String).toUtc(),
+      acceptedExecutionCount:
+          (value['accepted_execution_count'] as num?)?.toInt() ?? 0,
+      affectedTradeCount: (value['affected_trade_count'] as num?)?.toInt() ?? 0,
+      duplicateCount: (value['duplicate_count'] as num?)?.toInt() ?? 0,
+      errorCount: (value['error_count'] as num?)?.toInt() ?? 0);
+}
+
 class AccountProfile {
   const AccountProfile(
       {required this.username,
@@ -163,6 +196,7 @@ abstract class AnalysisGateway {
   Future<PortfolioImportResult> importPortfolio(
       Uint8List bytes, String filename);
   Future<List<TradeHistory>> trades();
+  Future<List<ImportSummary>> importHistory();
   Future<void> deleteTrade(String tradeId);
   Future<AccountProfile> profile();
   Future<AccountProfile> updateProfile(String displayName);
@@ -171,14 +205,20 @@ abstract class AnalysisGateway {
   Future<ImportPreview> preview(Uint8List bytes, String filename);
   Future<List<AffectedTrade>> importExecutions(Uint8List bytes, String filename,
       Map<String, String> mapping, String timezone);
-  Future<AnalysisResult> analyzeTrade(AffectedTrade trade);
+  Future<AnalysisResult> analyzeTrade(AffectedTrade trade,
+      {String? strategySlug});
   Future<AnalysisResult> retryAnalysis();
 }
 
 class HttpAnalysisGateway implements AnalysisGateway {
-  HttpAnalysisGateway({http.Client? client, this.onAuthenticationExpired})
-      : client = client ?? http.Client();
+  HttpAnalysisGateway(
+      {http.Client? client,
+      CredentialStore? credentialStore,
+      this.onAuthenticationExpired})
+      : client = client ?? http.Client(),
+        credentialStore = credentialStore ?? SecureCredentialStore();
   final http.Client client;
+  final CredentialStore credentialStore;
   final void Function()? onAuthenticationExpired;
   String? accessToken;
   @override
@@ -192,6 +232,7 @@ class HttpAnalysisGateway implements AnalysisGateway {
   String? lastTradeId;
   String? lastTradeRevisionId;
   String? lastFailedRunId;
+  String? lastStrategySlug;
 
   @override
   Future<void> healthCheck() async {
@@ -223,6 +264,7 @@ class HttpAnalysisGateway implements AnalysisGateway {
           body: jsonEncode({'refresh_token': token})));
       accessToken = refreshed['access_token'] as String;
       refreshToken = refreshed['refresh_token'] as String?;
+      await _persistSession();
       response = await request(_headers);
       if (response.statusCode != 401) return response;
     } catch (_) {}
@@ -235,7 +277,46 @@ class HttpAnalysisGateway implements AnalysisGateway {
     accessToken = null;
     refreshToken = null;
     accountEmail = null;
+    unawaited(_clearStoredSession());
     if (notify) onAuthenticationExpired?.call();
+  }
+
+  Future<void> _persistSession() async {
+    final token = refreshToken;
+    final email = accountEmail;
+    if (token == null || email == null) return;
+    try {
+      await credentialStore.writeSession(token, email);
+    } catch (_) {}
+  }
+
+  Future<void> _clearStoredSession() async {
+    try {
+      await credentialStore.clear();
+    } catch (_) {}
+  }
+
+  Future<bool> restoreSession() async {
+    try {
+      final token = await credentialStore.readRefreshToken();
+      final email = await credentialStore.readEmail();
+      if (token == null || email == null) return false;
+      final value = _decode(await client.post(_uri('/auth/refresh'),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({'refresh_token': token})))
+        ..removeWhere((key, value) => value == null);
+      accessToken = value['access_token'] as String;
+      refreshToken = value['refresh_token'] as String;
+      accountEmail = email;
+      await _persistSession();
+      return true;
+    } catch (_) {
+      accessToken = null;
+      refreshToken = null;
+      accountEmail = null;
+      await _clearStoredSession();
+      return false;
+    }
   }
 
   Future<Map<String, dynamic>> _tokens(
@@ -247,6 +328,7 @@ class HttpAnalysisGateway implements AnalysisGateway {
     accessToken = value['access_token'] as String;
     refreshToken = value['refresh_token'] as String?;
     accountEmail = email;
+    await _persistSession();
     return value;
   }
 
@@ -295,6 +377,17 @@ class HttpAnalysisGateway implements AnalysisGateway {
       });
 
   @override
+  Future<List<ImportSummary>> importHistory() async => _normalize(() async {
+        lastImportsWasLimited = false;
+        final response = await _authenticated(
+            (headers) => client.get(_uri('/imports'), headers: headers));
+        lastImportsWasLimited = response.headers['x-result-limit'] == '20';
+        return _decodeList(response)
+            .map((item) => ImportSummary.fromJson(item as Map<String, dynamic>))
+            .toList();
+      });
+
+  @override
   Future<void> deleteTrade(String tradeId) async => _normalize(() async {
         _expectNoContent(await _authenticated((headers) =>
             client.delete(_uri('/trades/$tradeId'), headers: headers)));
@@ -318,15 +411,18 @@ class HttpAnalysisGateway implements AnalysisGateway {
       });
 
   Future<void> logout() async {
-    if (refreshToken == null) return;
     try {
-      await _normalize(() async {
-        _expectNoContent(await client.post(_uri('/auth/logout'),
-            headers: {'Content-Type': 'application/json'},
-            body: jsonEncode({'refresh_token': refreshToken})));
-      });
+      final token = refreshToken;
+      if (token != null) {
+        await _normalize(() async {
+          _expectNoContent(await client.post(_uri('/auth/logout'),
+              headers: {'Content-Type': 'application/json'},
+              body: jsonEncode({'refresh_token': token})));
+        });
+      }
     } finally {
       _clearAuthentication();
+      await _clearStoredSession();
     }
   }
 
@@ -334,6 +430,7 @@ class HttpAnalysisGateway implements AnalysisGateway {
     await _normalize(() async => _expectNoContent(await _authenticated(
         (headers) => client.delete(_uri('/account'), headers: headers))));
     _clearAuthentication();
+    await _clearStoredSession();
   }
 
   @override
@@ -402,7 +499,8 @@ class HttpAnalysisGateway implements AnalysisGateway {
   }
 
   @override
-  Future<AnalysisResult> analyzeTrade(AffectedTrade trade) async {
+  Future<AnalysisResult> analyzeTrade(AffectedTrade trade,
+      {String? strategySlug}) async {
     if (!trade.analysisEligible) {
       throw const GatewayError('trade_open',
           'The import changed an open trade. Add its closing execution before analysis.');
@@ -410,7 +508,8 @@ class HttpAnalysisGateway implements AnalysisGateway {
     lastTradeId = trade.tradeId;
     lastTradeRevisionId = trade.revisionId;
     lastFailedRunId = null;
-    return _normalize(() => _analyze(trade.tradeId),
+    lastStrategySlug = strategySlug;
+    return _normalize(() => _analyze(trade.tradeId, strategySlug: strategySlug),
         canRetryAnalysis: true, timeout: const Duration(seconds: 20));
   }
 
@@ -421,14 +520,18 @@ class HttpAnalysisGateway implements AnalysisGateway {
           'retry_unavailable', 'There is no imported trade to retry.');
     }
     return _normalize(
-        () => _analyze(lastTradeId!, retryOfRunId: lastFailedRunId),
+        () => _analyze(lastTradeId!,
+            retryOfRunId: lastFailedRunId, strategySlug: lastStrategySlug),
         canRetryAnalysis: true,
         timeout: const Duration(seconds: 20));
   }
 
   Future<AnalysisResult> _analyze(String tradeId,
-      {String? retryOfRunId}) async {
+      {String? retryOfRunId, String? strategySlug}) async {
     final requestBody = <String, dynamic>{'trade_id': tradeId};
+    if (strategySlug != null && strategySlug.isNotEmpty) {
+      requestBody['strategy_slug'] = strategySlug;
+    }
     if (lastTradeRevisionId != null) {
       requestBody['trade_revision_id'] = lastTradeRevisionId;
     }

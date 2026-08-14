@@ -1,6 +1,6 @@
 import 'dart:typed_data';
 
-import 'package:file_picker/file_picker.dart';
+import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/app_config.dart';
@@ -30,6 +30,10 @@ class AnalysisScreen extends StatefulWidget {
       this.authenticated = false,
       this.onSearch,
       this.onAuthenticated,
+      this.onOpenTerms,
+      this.onOpenPrivacy,
+      this.embedded = false,
+      this.strategySlug = 'vwap-reclaim',
       super.key});
   final VoidCallback onThemeChanged;
   final AnalysisGateway? gateway;
@@ -37,6 +41,10 @@ class AnalysisScreen extends StatefulWidget {
   final bool authenticated;
   final VoidCallback? onSearch;
   final VoidCallback? onAuthenticated;
+  final VoidCallback? onOpenTerms;
+  final VoidCallback? onOpenPrivacy;
+  final bool embedded;
+  final String strategySlug;
 
   @override
   State<AnalysisScreen> createState() => _AnalysisScreenState();
@@ -67,6 +75,16 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
     precacheImage(const AssetImage('assets/rulemirror-mark.png'), context);
   }
 
+  @override
+  void didUpdateWidget(covariant AnalysisScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.authenticated != widget.authenticated &&
+        widget.authenticated &&
+        stage == FlowStage.auth) {
+      setState(() => stage = FlowStage.upload);
+    }
+  }
+
   Future<void> _preflight() async {
     try {
       await gateway.healthCheck();
@@ -88,7 +106,7 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final wide = MediaQuery.sizeOf(context).width >= 900;
+    final wide = !widget.embedded && MediaQuery.sizeOf(context).width >= 900;
     if (stage == FlowStage.starting) {
       return Scaffold(
           body: DecoratedBox(
@@ -116,10 +134,11 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
             Expanded(
               child: Column(
                 children: [
-                  _TopBar(
-                      onThemeChanged: widget.onThemeChanged,
-                      onSearch: widget.onSearch,
-                      showBrand: !wide),
+                  if (!widget.embedded)
+                    _TopBar(
+                        onThemeChanged: widget.onThemeChanged,
+                        onSearch: widget.onSearch,
+                        showBrand: !wide),
                   Expanded(
                     child: SingleChildScrollView(
                       padding: EdgeInsets.symmetric(
@@ -145,8 +164,13 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
           title: 'Connecting to RuleMirror',
           detail: 'Checking the secure analysis service.',
           progress: 0.12),
-      FlowStage.auth => _AuthPanel(onSubmit: _authenticate),
-      FlowStage.upload => _UploadPanel(onContinue: _selectFile),
+      FlowStage.auth => _AuthPanel(
+          onSubmit: _authenticate,
+          onOpenTerms: widget.onOpenTerms,
+          onOpenPrivacy: widget.onOpenPrivacy),
+      FlowStage.upload => _UploadPanel(
+          onContinue: _selectFile,
+          strategyName: _strategyLabel(widget.strategySlug)),
       FlowStage.mapping => _MappingPanel(
           preview: preview!,
           filename: filename,
@@ -213,13 +237,17 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
   }
 
   Future<SelectedFile?> _defaultFileSelector() async {
-    final picked = await FilePicker.platform.pickFiles(
-        type: FileType.custom, allowedExtensions: ['csv'], withData: true);
-    final file = picked?.files.single;
-    if (file == null || file.bytes == null) {
+    final file = await openFile(acceptedTypeGroups: const [
+      XTypeGroup(
+          label: 'CSV files',
+          extensions: ['csv'],
+          mimeTypes: ['text/csv'],
+          uniformTypeIdentifiers: ['public.comma-separated-values-text'])
+    ]);
+    if (file == null) {
       return null;
     }
-    return SelectedFile(file.name, file.bytes!);
+    return SelectedFile(file.name, await file.readAsBytes());
   }
 
   Future<void> _selectFile() async {
@@ -294,7 +322,8 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
   Future<void> _analyzeSelected(AffectedTrade trade) async {
     setState(() => stage = FlowStage.analyzing);
     try {
-      final value = await gateway.analyzeTrade(trade);
+      final value =
+          await gateway.analyzeTrade(trade, strategySlug: widget.strategySlug);
       if (mounted) {
         setState(() {
           result = value;
@@ -355,6 +384,17 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
   }
 }
 
+String _strategyLabel(String slug) => slug
+    .split('-')
+    .map((part) => part.isEmpty
+        ? part
+        : '${part.substring(0, 1).toUpperCase()}${part.substring(1)}')
+    .join(' ')
+    .replaceAll('Vwap', 'VWAP')
+    .replaceAll('Macd', 'MACD')
+    .replaceAll('Rsi', 'RSI')
+    .replaceAll('Atr', 'ATR');
+
 class SelectedFile {
   const SelectedFile(this.name, this.bytes);
   final String name;
@@ -407,9 +447,12 @@ class _TradeSelectionPanel extends StatelessWidget {
 }
 
 class _AuthPanel extends StatefulWidget {
-  const _AuthPanel({required this.onSubmit});
+  const _AuthPanel(
+      {required this.onSubmit, this.onOpenTerms, this.onOpenPrivacy});
   final Future<void> Function(String email, String password, bool register)
       onSubmit;
+  final VoidCallback? onOpenTerms;
+  final VoidCallback? onOpenPrivacy;
 
   @override
   State<_AuthPanel> createState() => _AuthPanelState();
@@ -420,11 +463,18 @@ class _AuthPanelState extends State<_AuthPanel> {
   final password = TextEditingController();
   String? error;
   bool busy = false;
+  bool creating = false;
+  bool agreed = false;
 
   Future<void> submit(bool register) async {
     if (!email.text.contains('@') || password.text.length < 12) {
       setState(() => error =
           'Enter a valid email and a password of at least 12 characters.');
+      return;
+    }
+    if (register && !agreed) {
+      setState(() => error =
+          'Agree to the Terms of Service and Privacy Policy before creating an account.');
       return;
     }
     setState(() {
@@ -445,7 +495,7 @@ class _AuthPanelState extends State<_AuthPanel> {
                 children: [
                   const _PageHeading(
                       kicker: 'Private analysis',
-                      title: 'Sign in to your workspace',
+                      title: 'Your private Rule Mirror workspace',
                       detail:
                           'Execution history is account-scoped and never public by default.'),
                   const SizedBox(height: 28),
@@ -471,6 +521,28 @@ class _AuthPanelState extends State<_AuthPanel> {
                                     onSubmitted: (_) => submit(false),
                                     decoration: const InputDecoration(
                                         labelText: 'Password')),
+                                if (creating) ...[
+                                  const SizedBox(height: 10),
+                                  CheckboxListTile(
+                                      contentPadding: EdgeInsets.zero,
+                                      controlAffinity:
+                                          ListTileControlAffinity.leading,
+                                      value: agreed,
+                                      onChanged: busy
+                                          ? null
+                                          : (value) => setState(
+                                              () => agreed = value ?? false),
+                                      title: const Text(
+                                          'I agree to the Terms of Service and Privacy Policy.'),
+                                      subtitle: Wrap(spacing: 4, children: [
+                                        TextButton(
+                                            onPressed: widget.onOpenTerms,
+                                            child: const Text('Read Terms')),
+                                        TextButton(
+                                            onPressed: widget.onOpenPrivacy,
+                                            child: const Text('Read Privacy'))
+                                      ]))
+                                ],
                                 if (error != null)
                                   Padding(
                                       padding: const EdgeInsets.only(top: 12),
@@ -482,13 +554,23 @@ class _AuthPanelState extends State<_AuthPanel> {
                                 const SizedBox(height: 20),
                                 FilledButton(
                                     onPressed:
-                                        busy ? null : () => submit(false),
-                                    child:
-                                        Text(busy ? 'Signing in…' : 'Sign in')),
+                                        busy ? null : () => submit(creating),
+                                    child: Text(busy
+                                        ? 'Working…'
+                                        : creating
+                                            ? 'Create private account'
+                                            : 'Sign in')),
                                 const SizedBox(height: 10),
-                                OutlinedButton(
-                                    onPressed: busy ? null : () => submit(true),
-                                    child: const Text('Create private account'))
+                                TextButton(
+                                    onPressed: busy
+                                        ? null
+                                        : () => setState(() {
+                                              creating = !creating;
+                                              error = null;
+                                            }),
+                                    child: Text(creating
+                                        ? 'Already have an account? Sign in'
+                                        : 'Create a private account'))
                               ])))
                 ])));
   }
@@ -658,8 +740,11 @@ class _Brand extends StatelessWidget {
               decoration: BoxDecoration(
                   color: Colors.white, borderRadius: BorderRadius.circular(8)),
               clipBehavior: Clip.antiAlias,
-              child:
-                  Image.asset('assets/rulemirror-mark.png', fit: BoxFit.cover)),
+              child: Stack(fit: StackFit.expand, children: [
+                Icon(Icons.bar_chart_rounded,
+                    color: Theme.of(context).colorScheme.primary, size: 28),
+                Image.asset('assets/rulemirror-mark.png', fit: BoxFit.cover)
+              ])),
           const SizedBox(width: 8),
           Text('RuleMirror',
               style: Theme.of(context).textTheme.titleSmall?.copyWith(
@@ -703,17 +788,18 @@ class _NavItem extends StatelessWidget {
 }
 
 class _UploadPanel extends StatelessWidget {
-  const _UploadPanel({required this.onContinue});
+  const _UploadPanel({required this.onContinue, required this.strategyName});
   final VoidCallback onContinue;
+  final String strategyName;
 
   @override
   Widget build(BuildContext context) {
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      const _PageHeading(
+      _PageHeading(
           kicker: 'New analysis',
           title: 'Analyze actual execution quality',
           detail:
-              'Import a CSV of fills. We reconstruct each trade and evaluate the market conditions that existed before your entry.'),
+              'Import a CSV of fills for the $strategyName default profile. We reconstruct each trade and evaluate the context before entry.'),
       const SizedBox(height: 32),
       Card(
           child: Padding(

@@ -9,7 +9,9 @@ void main() {
   setUpAll(() async {
     final loader = FontLoader('Roboto')
       ..addFont(rootBundle.load('assets/fonts/Roboto-Regular.ttf'));
-    await loader.load();
+    final iconLoader = FontLoader('MaterialIcons')
+      ..addFont(rootBundle.load('assets/fonts/MaterialIcons-Regular.otf'));
+    await Future.wait([loader.load(), iconLoader.load()]);
   });
   Future<void> pumpAt(WidgetTester tester, Size size) async {
     tester.view.physicalSize = size;
