@@ -2,6 +2,7 @@ import './styles.css'
 import { ApiError, LunaApiClient } from './api'
 import type { AccountProfile, AffectedTrade, AnalysisRun, ImportPreview, ImportResult, ImportSummary, PortfolioHolding, PortfolioSummary, TradeAnalysis, TradeHistory } from './contracts'
 import { STRATEGY_CATALOG } from './strategy_catalog'
+import { filterWorkspaceCommands, type WorkspaceCommand } from './command_search'
 import { pollAnalysisRun } from './analysis_polling'
 import { formatActivityTime } from './activity_time'
 
@@ -50,6 +51,8 @@ const state: {
   accountSearch: string
   accountResults: AccountProfile[]
   viewedAccount: AccountProfile | null
+  commandOpen: boolean
+  commandQuery: string
 } = {
   page: 'overview',
   authMode: 'login',
@@ -77,6 +80,8 @@ const state: {
   accountSearch: '',
   accountResults: [],
   viewedAccount: null,
+  commandOpen: false,
+  commandQuery: '',
 }
 
 let navTrigger: HTMLButtonElement | null = null
@@ -223,6 +228,33 @@ function mascotState() {
   return 'idle'
 }
 
+function strategySlug(name: string) {
+  return name.toLowerCase().replace(/[^a-z0-9]+/g, '-')
+}
+
+const COMMAND_STRATEGIES = [
+  { name: 'VWAP Reclaim', family: 'built-in profile', summary: 'Checks completed-bar VWAP reclaim, EMA alignment, relative volume, entry timing, and extension.' },
+  ...STRATEGY_CATALOG,
+]
+
+function commandResultsMarkup(query: string) {
+  const commands = filterWorkspaceCommands(query)
+  const terms = query.trim().toLocaleLowerCase().split(/\s+/).filter(Boolean)
+  const strategies = terms.length
+    ? COMMAND_STRATEGIES.filter((strategy) => {
+      const haystack = `${strategy.name} ${strategy.family} ${strategy.summary}`.toLocaleLowerCase()
+      return terms.every((term) => haystack.includes(term))
+    }).slice(0, 8)
+    : []
+  if (!commands.length && !strategies.length) return '<p class="command-empty">No matching workspace commands.</p>'
+  return `${commands.map((command) => `<button class="command-result" type="button" data-command-kind="${command.kind}" ${command.page ? `data-command-page="${command.page}"` : ''} data-command-id="${command.id}"><span class="command-result-icon">${icon(command.kind === 'accounts' ? 'user' : command.kind === 'theme' ? 'moon' : 'arrow')}</span><span><strong>${escape(command.label)}</strong><small>${escape(command.hint)}</small></span>${icon('chevron')}</button>`).join('')}${strategies.map((strategy) => `<button class="command-result" type="button" data-command-strategy="${escape(strategySlug(strategy.name))}"><span class="command-result-icon">${icon('layers')}</span><span><strong>${escape(strategy.name)}</strong><small>${escape(strategy.family)} · ${escape(strategy.summary)}</small></span>${icon('chevron')}</button>`).join('')}`
+}
+
+function commandView() {
+  if (!state.commandOpen) return ''
+  return `<div class="command-scrim" id="command-scrim"><section class="command-sheet" role="dialog" aria-modal="true" aria-labelledby="command-title"><div class="command-header"><div><p class="eyebrow">Rule Mirror commands</p><h2 id="command-title">What should we open?</h2></div><button class="icon-button" id="close-command" type="button" aria-label="Close commands">×</button></div><label class="command-search-label" for="command-query">Search by keyword</label><input id="command-query" type="search" autocomplete="off" value="${escape(state.commandQuery)}" placeholder="Try portfolio, trades, VWAP, or theme" aria-controls="command-results"><div class="command-results" id="command-results" role="listbox" aria-label="Workspace command results">${commandResultsMarkup(state.commandQuery)}</div></section></div>`
+}
+
 function authView() {
   const register = state.authMode === 'register'
   return `<main class="auth-layout"><section class="auth-story"><div class="brand-line">${logo()}</div><div class="story-content"><p class="eyebrow">A clearer record of your decisions</p><h1>Review the trade.<br><em>Keep the lesson.</em></h1><p class="story-copy">RuleMirror reconstructs your real executions against a consistent set of rules, so your process gets easier to see over time.</p><div class="story-note"><span class="note-dot"></span><span>Private by default. Built for reflection, not prediction.</span></div></div><div class="story-footer">Strategy adherence analytics · v0.1 foundation</div></section><section class="auth-panel"><div class="auth-card"><div class="mobile-brand">${logo()}</div><p class="eyebrow">${register ? 'Create your workspace' : 'Welcome back'}</p><h2>${register ? 'Start with your process.' : 'Sign in to continue.'}</h2><p class="muted">${register ? 'Your first review starts with one clean CSV export.' : 'Your data and notes stay tied to your account.'}</p><form id="auth-form" class="form-stack"><label>Email address<input name="email" type="email" autocomplete="email" required value="${escape(state.email)}" placeholder="you@example.com"></label><label>Password<input name="password" type="password" minlength="12" autocomplete="${register ? 'new-password' : 'current-password'}" required placeholder="At least 12 characters"></label>${register ? '<label class="check-line"><input name="terms" type="checkbox" required><span>I agree to the <a href="/terms.html" target="_blank">Terms</a> and <a href="/privacy.html" target="_blank">Privacy Policy</a>, and understand RuleMirror is analytics—not financial advice.</span></label>' : ''}<button class="button button-primary button-wide" type="submit" ${state.busy ? 'disabled' : ''}>${state.busy ? 'Working…' : register ? 'Create account' : 'Sign in'} ${icon('arrow')}</button></form><button class="text-button" id="auth-toggle" type="button">${register ? 'Already have an account? Sign in' : 'New here? Create an account'}</button><p class="form-footnote">By using RuleMirror, you agree to the <a href="/terms.html">Terms of Service</a> and <a href="/privacy.html">Privacy Policy</a>. No card required.</p></div></section></main>${noticeView()}`
@@ -239,7 +271,7 @@ function navItem(page: Page, label: string, glyph: string) {
 
 function shellView() {
   const accounts = `<div class="account-results" id="account-results" role="status" aria-live="polite" aria-atomic="true" aria-label="${state.accountResults.length ? `${state.accountResults.length} public account results` : 'Account search results'}">${state.accountResults.map(accountResultView).join('')}</div>`
-  return `<div class="app-shell"><aside class="sidebar" id="sidebar"><div class="sidebar-head"><div class="brand-line">${logo()}</div><button class="sidebar-close" id="close-nav" type="button" aria-label="Close navigation">×</button></div><div class="workspace-pill"><span class="avatar avatar-small">${safeAvatarSource(state.profile.avatar) ? `<img src="${escape(safeAvatarSource(state.profile.avatar) as string)}" alt="">` : initials()}</span><span><strong>${escape(state.profile.name || 'Your workspace')}</strong><small>Personal workspace</small></span></div><nav class="primary-nav" aria-label="Primary navigation">${navItem('overview', 'Overview', 'grid')}${navItem('portfolio', 'My portfolio', 'briefcase')}${navItem('analyze', 'Analyze', 'upload')}${navItem('trades', 'Trades', 'list')}${navItem('strategies', 'Strategies', 'layers')}${navItem('insights', 'Insights', 'compass')}</nav><div class="sidebar-bottom"><button class="nav-item ${state.page === 'profile' ? 'active' : ''}" data-page="profile" type="button">${icon('user')}<span>Profile & settings</span></button><div class="sidebar-rule"></div><button class="nav-item" id="sign-out" type="button">${icon('logout')}<span>Sign out</span></button><p class="sidebar-meta">RuleMirror v0.1<br><span>Analytics, not advice.</span></p></div></aside><div class="mobile-overlay" id="mobile-overlay"></div><section class="main-column"><header class="topbar"><button class="menu-button" id="open-nav" type="button" aria-label="Open navigation" aria-controls="sidebar" aria-expanded="false">☰</button><div class="breadcrumb"><span>Workspace</span>${state.page !== 'overview' ? `<b>/</b><strong>${pageTitle(state.page)}</strong>` : ''}</div><div class="topbar-actions"><form class="account-search-wrap" id="account-search-form"><input id="account-search" type="search" placeholder="Search public handles or names" value="${escape(state.accountSearch)}" aria-label="Search public handles or names"><button type="submit" class="search-submit">Search</button>${accounts}</form><button class="icon-button" id="theme-toggle" type="button" aria-label="Toggle theme">${icon('moon')}</button><button class="avatar avatar-small" data-page="profile" type="button" aria-label="Open profile">${safeAvatarSource(state.profile.avatar) ? `<img src="${escape(safeAvatarSource(state.profile.avatar) as string)}" alt="">` : initials()}</button></div></header><main class="content">${pageView()}</main></section></div>${noticeView()}`
+  return `<div class="app-shell"><aside class="sidebar" id="sidebar"><div class="sidebar-head"><button class="mascot-trigger" id="mascot-command" type="button" aria-label="Open Rule Mirror keyword commands" aria-haspopup="dialog"><rule-mirror-mascot size="54" theme="${state.profile.theme === 'dark' ? 'dark' : 'light'}" green="#145c4a" state="${mascotState()}"></rule-mirror-mascot></button><div class="brand-line">${logo()}</div><button class="sidebar-close" id="close-nav" type="button" aria-label="Close navigation">×</button></div><div class="workspace-pill"><span class="avatar avatar-small">${safeAvatarSource(state.profile.avatar) ? `<img src="${escape(safeAvatarSource(state.profile.avatar) as string)}" alt="">` : initials()}</span><span><strong>${escape(state.profile.name || 'Your workspace')}</strong><small>Personal workspace</small></span></div><nav class="primary-nav" aria-label="Primary navigation">${navItem('overview', 'Overview', 'grid')}${navItem('portfolio', 'My portfolio', 'briefcase')}${navItem('analyze', 'Analyze', 'upload')}${navItem('trades', 'Trades', 'list')}${navItem('strategies', 'Strategies', 'layers')}${navItem('insights', 'Insights', 'compass')}</nav><div class="sidebar-bottom"><button class="nav-item ${state.page === 'profile' ? 'active' : ''}" data-page="profile" type="button">${icon('user')}<span>Profile & settings</span></button><div class="sidebar-rule"></div><button class="nav-item" id="sign-out" type="button">${icon('logout')}<span>Sign out</span></button><p class="sidebar-meta">RuleMirror v0.1<br><span>Analytics, not advice.</span></p></div></aside><div class="mobile-overlay" id="mobile-overlay"></div><section class="main-column"><header class="topbar"><button class="menu-button" id="open-nav" type="button" aria-label="Open navigation" aria-controls="sidebar" aria-expanded="false">☰</button><div class="breadcrumb"><span>Workspace</span>${state.page !== 'overview' ? `<b>/</b><strong>${pageTitle(state.page)}</strong>` : ''}</div><div class="topbar-actions"><form class="account-search-wrap" id="account-search-form"><input id="account-search" type="search" placeholder="Search public handles or names" value="${escape(state.accountSearch)}" aria-label="Search public handles or names"><button type="submit" class="search-submit">Search</button>${accounts}</form><button class="icon-button" id="theme-toggle" type="button" aria-label="Toggle theme">${icon('moon')}</button><button class="avatar avatar-small" data-page="profile" type="button" aria-label="Open profile">${safeAvatarSource(state.profile.avatar) ? `<img src="${escape(safeAvatarSource(state.profile.avatar) as string)}" alt="">` : initials()}</button></div></header><main class="content">${pageView()}</main></section></div>${commandView()}${noticeView()}`
 }
 
 function pageTitle(page: Page) {
@@ -361,7 +393,69 @@ function render() {
   }
 }
 
+function focusCommandSearch() {
+  window.requestAnimationFrame(() => mount.querySelector<HTMLInputElement>('#command-query')?.focus())
+}
+
+function openCommandSearch() {
+  state.commandOpen = true
+  state.commandQuery = ''
+  render()
+  focusCommandSearch()
+}
+
+function closeCommandSearch() {
+  state.commandOpen = false
+  state.commandQuery = ''
+  render()
+}
+
+function runWorkspaceCommand(command: WorkspaceCommand) {
+  if (command.kind === 'accounts') {
+    if (!state.tokens) {
+      state.commandOpen = false
+      state.commandQuery = ''
+      setNotice('Sign in to search public handles.', 'info')
+      return
+    }
+    state.commandOpen = false
+    state.commandQuery = ''
+    state.accountSearch = ''
+    render()
+    window.requestAnimationFrame(() => mount.querySelector<HTMLInputElement>('#account-search')?.focus())
+    return
+  }
+  if (command.kind === 'theme') {
+    state.commandOpen = false
+    state.commandQuery = ''
+    toggleTheme()
+    return
+  }
+  if (!state.tokens) {
+    state.commandOpen = false
+    state.commandQuery = ''
+    setNotice('Sign in to open workspace commands.', 'info')
+    return
+  }
+  state.commandOpen = false
+  state.commandQuery = ''
+  state.page = command.page as Page
+  render()
+}
+
 function bindEvents() {
+  const authPanel = mount.querySelector<HTMLElement>('.auth-panel')
+  if (authPanel && !authPanel.querySelector('#mascot-command')) {
+    const mascot = document.createElement('button')
+    mascot.className = 'mascot-trigger auth-mascot'
+    mascot.id = 'mascot-command'
+    mascot.type = 'button'
+    mascot.setAttribute('aria-label', 'Open Rule Mirror keyword commands')
+    mascot.setAttribute('aria-haspopup', 'dialog')
+    mascot.innerHTML = `<rule-mirror-mascot size="54" theme="${state.profile.theme === 'dark' ? 'dark' : 'light'}" green="#145c4a" state="${mascotState()}"></rule-mirror-mascot>`
+    authPanel.prepend(mascot)
+  }
+  if (state.commandOpen && !mount.querySelector('#command-scrim')) mount.insertAdjacentHTML('beforeend', commandView())
   const busyPanel = mount.querySelector<HTMLElement>('.import-panel')
   if (busyPanel) {
     busyPanel.setAttribute('aria-busy', state.busy ? 'true' : 'false')
@@ -403,16 +497,39 @@ function bindEvents() {
     const content = mount.querySelector<HTMLElement>('.content')
     if (content && !content.querySelector('.imports-limit-notice')) content.insertAdjacentHTML('afterbegin', '<div class="notice notice-info imports-limit-notice">Showing the 20 most recent imports.</div>')
   }
-  const sidebarHead = mount.querySelector('.sidebar-head')
-  if (sidebarHead && !sidebarHead.querySelector('rule-mirror-mascot')) {
-    const mascot = document.createElement('rule-mirror-mascot')
-    mascot.setAttribute('aria-hidden', 'true')
-    mascot.setAttribute('size', '54')
-    mascot.setAttribute('theme', state.profile.theme === 'dark' ? 'dark' : 'light')
-    mascot.setAttribute('green', '#145c4a')
-    mascot.setAttribute('state', mascotState())
-    sidebarHead.prepend(mascot)
-  }
+  mount.querySelector('#mascot-command')?.addEventListener('click', openCommandSearch)
+  mount.querySelector('#close-command')?.addEventListener('click', closeCommandSearch)
+  mount.querySelector('#command-scrim')?.addEventListener('click', (event) => {
+    if (event.target === event.currentTarget) closeCommandSearch()
+  })
+  mount.querySelector<HTMLInputElement>('#command-query')?.addEventListener('input', (event) => {
+    state.commandQuery = (event.target as HTMLInputElement).value
+    const results = mount.querySelector<HTMLElement>('#command-results')
+    if (results) {
+      results.innerHTML = commandResultsMarkup(state.commandQuery)
+      results.setAttribute('aria-label', `${results.querySelectorAll('.command-result').length} workspace command results`)
+    }
+  })
+  mount.querySelector<HTMLInputElement>('#command-query')?.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') closeCommandSearch()
+  })
+  mount.querySelectorAll<HTMLButtonElement>('[data-command-kind]').forEach((button) => button.addEventListener('click', () => {
+    const command = filterWorkspaceCommands(state.commandQuery).find((item) => item.id === button.dataset.commandId)
+    if (command) runWorkspaceCommand(command)
+  }))
+  mount.querySelectorAll<HTMLButtonElement>('[data-command-strategy]').forEach((button) => button.addEventListener('click', () => {
+    if (!state.tokens) {
+      state.commandOpen = false
+      state.commandQuery = ''
+      setNotice('Sign in to select a strategy.', 'info')
+      return
+    }
+    state.selectedStrategy = button.dataset.commandStrategy ?? 'vwap-reclaim'
+    state.page = 'analyze'
+    state.commandOpen = false
+    state.commandQuery = ''
+    setNotice('Strategy selected. Its versioned default rule profile will be used for your next review.', 'success')
+  }))
   mount.querySelectorAll<HTMLButtonElement>('[data-account-username]').forEach((button) => button.addEventListener('click', () => void openAccountProfile(button.dataset.accountUsername ?? '')))
   mount.querySelector<HTMLFormElement>('#account-search-form')?.addEventListener('submit', (event) => {
     event.preventDefault()
