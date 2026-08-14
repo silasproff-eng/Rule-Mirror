@@ -17,10 +17,7 @@ class _EmptyCredentialStore implements CredentialStore {
   Future<void> clear() async {}
 
   @override
-  Future<String?> readEmail() async => null;
-
-  @override
-  Future<String?> readRefreshToken() async => null;
+  Future<StoredSession?> readSession() async => null;
 
   @override
   Future<void> writeSession(String refreshToken, String email) async {}
@@ -37,10 +34,10 @@ class _StoredCredentialStore implements CredentialStore {
   }
 
   @override
-  Future<String?> readEmail() async => email;
-
-  @override
-  Future<String?> readRefreshToken() async => refreshToken;
+  Future<StoredSession?> readSession() async {
+    if (refreshToken == null || email == null) return null;
+    return StoredSession(refreshToken: refreshToken!, email: email!);
+  }
 
   @override
   Future<void> writeSession(String refreshToken, String email) async {

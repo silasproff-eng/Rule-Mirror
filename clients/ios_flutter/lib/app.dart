@@ -86,9 +86,7 @@ class _LaunchShell extends StatefulWidget {
   State<_LaunchShell> createState() => _LaunchShellState();
 }
 
-class _LaunchShellState extends State<_LaunchShell>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController animation;
+class _LaunchShellState extends State<_LaunchShell> {
   int tab = 2;
   bool ready = false;
   late final PageController pages = PageController(initialPage: tab);
@@ -108,9 +106,6 @@ class _LaunchShellState extends State<_LaunchShell>
   @override
   void initState() {
     super.initState();
-    animation = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 1100))
-      ..forward();
     gateway = widget.gateway ??
         HttpAnalysisGateway(onAuthenticationExpired: _resetToSignIn);
     _restoreSession();
@@ -118,7 +113,6 @@ class _LaunchShellState extends State<_LaunchShell>
 
   Future<void> _restoreSession() async {
     final restored = await gateway.restoreSession();
-    await Future<void>.delayed(const Duration(milliseconds: 500));
     if (mounted) {
       setState(() {
         signedIn = restored;
@@ -135,7 +129,6 @@ class _LaunchShellState extends State<_LaunchShell>
 
   @override
   void dispose() {
-    animation.dispose();
     pages.dispose();
     topSearch.dispose();
     super.dispose();
@@ -159,59 +152,57 @@ class _LaunchShellState extends State<_LaunchShell>
           leadingWidth: 58,
           centerTitle: true,
           title: _AccountSearchButton(gateway: gateway, signedIn: signedIn)),
-      body: FadeTransition(
-          opacity: CurvedAnimation(parent: animation, curve: Curves.easeOut),
-          child: PageView(
-              controller: pages,
-              onPageChanged: (value) => setState(() => tab = value),
-              children: [
-                _OverviewTab(
-                    key: ValueKey('overview-$signedIn'),
-                    authenticated: signedIn,
-                    gateway: gateway,
-                    onNavigate: (value) => pages.animateToPage(value,
-                        duration: const Duration(milliseconds: 260),
-                        curve: Curves.easeOutCubic)),
-                _DataTab(
-                    key: ValueKey('portfolio-$signedIn'),
-                    authenticated: signedIn,
-                    title: 'My portfolio',
-                    load: gateway.portfolio,
-                    gateway: gateway,
-                    importPortfolio: gateway.importPortfolio),
-                AnalysisScreen(
-                    key: ValueKey('analysis-$signedIn'),
-                    onThemeChanged: widget.onThemeChanged,
-                    gateway: gateway,
-                    authenticated: signedIn,
-                    embedded: true,
-                    strategySlug: selectedStrategy,
-                    onOpenTerms: () => _openTerms(context),
-                    onOpenPrivacy: () => _openPrivacy(context),
-                    onSearch: () => showSearch<String>(
-                        context: context,
-                        delegate: _AccountSearchDelegate(
-                            gateway: gateway, signedIn: signedIn)),
-                    onAuthenticated: () {
-                      setState(() => signedIn = true);
-                      pages.animateToPage(0,
-                          duration: const Duration(milliseconds: 260),
-                          curve: Curves.easeOutCubic);
-                    }),
-                _DataTab(
-                    key: ValueKey('trades-$signedIn'),
-                    authenticated: signedIn,
-                    title: 'Trades',
-                    load: gateway.trades,
-                    gateway: gateway,
-                    deleteTrade: gateway.deleteTrade),
-                _SearchTab(
-                    key: ValueKey('profile-$signedIn'),
-                    authenticated: signedIn,
-                    gateway: gateway,
-                    onThemeChanged: widget.onThemeChanged,
-                    onSignedOut: _resetToSignIn),
-              ])),
+      body: PageView(
+          controller: pages,
+          onPageChanged: (value) => setState(() => tab = value),
+          children: [
+            _OverviewTab(
+                key: ValueKey('overview-$signedIn'),
+                authenticated: signedIn,
+                gateway: gateway,
+                onNavigate: (value) => pages.animateToPage(value,
+                    duration: const Duration(milliseconds: 260),
+                    curve: Curves.easeOutCubic)),
+            _DataTab(
+                key: ValueKey('portfolio-$signedIn'),
+                authenticated: signedIn,
+                title: 'My portfolio',
+                load: gateway.portfolio,
+                gateway: gateway,
+                importPortfolio: gateway.importPortfolio),
+            AnalysisScreen(
+                key: ValueKey('analysis-$signedIn'),
+                onThemeChanged: widget.onThemeChanged,
+                gateway: gateway,
+                authenticated: signedIn,
+                embedded: true,
+                strategySlug: selectedStrategy,
+                onOpenTerms: () => _openTerms(context),
+                onOpenPrivacy: () => _openPrivacy(context),
+                onSearch: () => showSearch<String>(
+                    context: context,
+                    delegate: _AccountSearchDelegate(
+                        gateway: gateway, signedIn: signedIn)),
+                onAuthenticated: () {
+                  setState(() => signedIn = true);
+                  pages.animateToPage(0,
+                      duration: const Duration(milliseconds: 260),
+                      curve: Curves.easeOutCubic);
+                }),
+            _DataTab(
+                key: ValueKey('trades-$signedIn'),
+                authenticated: signedIn,
+                title: 'Trades',
+                load: gateway.trades,
+                gateway: gateway,
+                deleteTrade: gateway.deleteTrade),
+            _SearchTab(
+                key: ValueKey('profile-$signedIn'),
+                authenticated: signedIn,
+                gateway: gateway,
+                onThemeChanged: widget.onThemeChanged,
+                onSignedOut: _resetToSignIn),
+          ]),
       bottomNavigationBar: NavigationBar(
           selectedIndex: tab,
           onDestinationSelected: (value) => pages.animateToPage(value,

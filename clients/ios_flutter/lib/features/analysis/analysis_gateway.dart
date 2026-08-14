@@ -298,16 +298,19 @@ class HttpAnalysisGateway implements AnalysisGateway {
 
   Future<bool> restoreSession() async {
     try {
-      final token = await credentialStore.readRefreshToken();
-      final email = await credentialStore.readEmail();
-      if (token == null || email == null) return false;
-      final value = _decode(await client.post(_uri('/auth/refresh'),
-          headers: {'Content-Type': 'application/json'},
-          body: jsonEncode({'refresh_token': token})))
+      final stored = await credentialStore
+          .readSession()
+          .timeout(const Duration(seconds: 2));
+      if (stored == null) return false;
+      final value = _decode(await client
+          .post(_uri('/auth/refresh'),
+              headers: {'Content-Type': 'application/json'},
+              body: jsonEncode({'refresh_token': stored.refreshToken}))
+          .timeout(const Duration(seconds: 4)))
         ..removeWhere((key, value) => value == null);
       accessToken = value['access_token'] as String;
       refreshToken = value['refresh_token'] as String;
-      accountEmail = email;
+      accountEmail = stored.email;
       await _persistSession();
       return true;
     } catch (_) {

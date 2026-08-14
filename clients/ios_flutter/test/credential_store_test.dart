@@ -17,10 +17,10 @@ class MemoryCredentialStore implements CredentialStore {
   }
 
   @override
-  Future<String?> readEmail() async => email;
-
-  @override
-  Future<String?> readRefreshToken() async => token;
+  Future<StoredSession?> readSession() async {
+    if (token == null || email == null) return null;
+    return StoredSession(refreshToken: token!, email: email!);
+  }
 
   @override
   Future<void> writeSession(String refreshToken, String accountEmail) async {
